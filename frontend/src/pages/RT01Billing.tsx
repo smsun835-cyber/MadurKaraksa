@@ -1,0 +1,340 @@
+import React, { useState, useEffect } from 'react';
+import PageLayout from '../components/layout/PageLayout';
+import { databases, DATABASE_ID, COLLECTION_ID_RT01, getUserRole } from '../services/appwrite';
+import { Query, ID } from 'appwrite';
+
+interface BillingRecord {
+  $id: string;
+  Nama: string;
+  November: number;
+  Desember: number;
+  Januari: number;
+  Febuari: number;
+  Maret: number;
+  April: number;
+  Mei: number;
+  Juni: number;
+  Juli: number;
+  Agustus: number;
+}
+
+export default function RT01Billing() {
+  const [residents, setResidents] = useState<BillingRecord[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [userRole, setUserRole] = useState<string>('warga'); // Default publik/warga
+
+  // Form input state
+  const [namaWarga, setNamaWarga] = useState('');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [bulanPilih, setBulanPilih] = useState('November');
+  const [nominal, setNominal] = useState('');
+  const [isEditing, setIsEditing] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function init() {
+      const role = await getUserRole(); // Cek role dari Appwrite (admin, barudak, atau warga)
+      setUserRole(role);
+      fetchData();
+    }
+    init();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID_RT01,
+        [Query.limit(100)]
+      );
+      setResidents(response.documents as unknown as BillingRecord[]);
+    } catch (error) {
+      console.error("Gagal mengambil data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const daftarNamaUnik = Array.from(new Set(residents.map((r) => r.Nama).filter(Boolean)));
+  const filteredNama = daftarNamaUnik.filter(nama => nama.toLowerCase().includes(namaWarga.toLowerCase()));
+
+  const handleSaveRecord = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!namaWarga.trim()) return alert("Silakan isi atau pilih nama warga!");
+
+    try {
+      if (isEditing) {
+        await databases.updateDocument(DATABASE_ID, COLLECTION_ID_RT01, isEditing, {
+          Nama: namaWarga,
+          [bulanPilih]: Number(nominal),
+        });
+        alert(`Data ${namaWarga} untuk bulan ${bulanPilih} berhasil diubah!`);
+      } else {
+        await databases.createDocument(DATABASE_ID, COLLECTION_ID_RT01, ID.unique(), {
+          Nama: namaWarga,
+          [bulanPilih]: Number(nominal),
+        });
+        alert(`Data baru untuk ${namaWarga} berhasil disimpan!`);
+      }
+      handleCancelEdit();
+      fetchData(); 
+    } catch (error) {
+      console.error("Gagal menyimpan data:", error);
+      alert("Terjadi kesalahan saat menyimpan data.");
+    }
+  };
+
+  const handleEdit = (item: BillingRecord) => {
+    setIsEditing(item.$id);
+    setNamaWarga(item.Nama);
+    setIsDropdownOpen(false);
+    setNominal(String(item[bulanPilih as keyof BillingRecord] || 0));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(null);
+    setNamaWarga('');
+    setNominal('');
+    setIsDropdownOpen(false);
+  };
+
+  const handleDelete = async (id: string, nama: string) => {
+    if (window.confirm(`YAKIN HAPUS? Seluruh record data milik ${nama} pada baris ini akan dihapus permanen.`)) {
+      try {
+        await databases.deleteDocument(DATABASE_ID, COLLECTION_ID_RT01, id);
+        alert(`Data ${nama} berhasil dihapus.`);
+        if (isEditing === id) handleCancelEdit();
+        fetchData();
+      } catch (error) {
+        console.error("Gagal menghapus:", error);
+        alert("Terjadi kesalahan saat menghapus data.");
+      }
+    }
+  };
+
+  const months = ['November', 'Desember', 'Januari', 'Febuari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus'] as const;
+  const totalCollected = residents.reduce((acc, curr) => {
+    const sumRow = months.reduce((mAcc, month) => mAcc + (Number(curr[month]) || 0), 0);
+    return acc + sumRow;
+  }, 0);
+  const targetPerCell = 10000;
+  const totalTargetCell = residents.length * months.length * targetPerCell;
+  const pendingDues = Math.max(0, totalTargetCell - totalCollected);
+  const amount75 = totalCollected * 0.75;
+  const amount25 = totalCollected * 0.25;
+  const collectionRate = totalTargetCell > 0 ? ((totalCollected / totalTargetCell) * 100).toFixed(1) : '0';
+
+  return (
+    <PageLayout activeMenu="rt01">
+      <div className="mb-6 flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-blue-900">RT 01 Financial Overview</h2>
+          <p className="text-slate-500 text-sm mt-1">Manage monthly dues and payment records for residents of RT 01.</p>
+        </div>
+        <div className="text-xs bg-slate-100 text-slate-600 px-3 py-1.5 rounded-full font-medium border border-slate-200">
+          Status Akses: <span className="font-bold uppercase text-blue-800">{userRole}</span>
+        </div>
+      </div>
+
+      {/* SUMMARY CARDS */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Collected</p>
+          <h3 className="text-2xl font-bold text-slate-800 mb-2">Rp {totalCollected.toLocaleString('id-ID')}</h3>
+          <div className="text-xs text-slate-600 space-y-1 pt-2 border-t border-slate-100">
+            <div className="flex justify-between"><span>Alokasi 75%:</span><span className="font-semibold text-blue-900">Rp {amount75.toLocaleString('id-ID')}</span></div>
+            <div className="flex justify-between"><span>Alokasi 25%:</span><span className="font-semibold text-emerald-700">Rp {amount25.toLocaleString('id-ID')}</span></div>
+          </div>
+        </div>
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Pending Dues</p>
+          <h3 className="text-2xl font-bold text-slate-800 mb-1">Rp {pendingDues.toLocaleString('id-ID')}</h3>
+          <p className="text-xs font-medium text-red-500">{residents.length} Terdaftar ({months.length} Bulan Periode)</p>
+        </div>
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Collection Rate</p>
+          <h3 className="text-2xl font-bold text-slate-800 mb-2">{collectionRate}%</h3>
+          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+            <div className="bg-emerald-800 h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(Number(collectionRate), 100)}%` }}></div>
+          </div>
+        </div>
+      </div>
+
+      {/* FORM INPUT: HANYA MUNCUL JIKA USER ADALAH ADMIN ATAU BARUDAK */}
+      {userRole !== 'warga' && (
+        <div className={`p-6 rounded-xl border shadow-sm mb-6 ${isEditing ? 'bg-orange-50 border-orange-200' : 'bg-white border-slate-200'}`}>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-lg text-slate-800">
+              {isEditing ? '✏️ Edit Record Iuran' : 'Input Data Iuran Baru'}
+            </h3>
+            {isEditing && (
+              <button type="button" onClick={handleCancelEdit} className="text-sm bg-white border border-slate-300 px-3 py-1 rounded text-slate-600 hover:text-red-500 font-medium">
+                X Batal Edit
+              </button>
+            )}
+          </div>
+          
+          <form onSubmit={handleSaveRecord} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start relative">
+            <div className="relative">
+              <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Nama Warga</label>
+              <input 
+                type="text"
+                placeholder="Cari atau ketik nama..."
+                value={namaWarga}
+                onChange={(e) => { setNamaWarga(e.target.value); setIsDropdownOpen(true); }}
+                onFocus={() => setIsDropdownOpen(true)}
+                onBlur={() => setTimeout(() => setIsDropdownOpen(false), 200)} 
+                disabled={!!isEditing} 
+                className={`w-full border rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-100 ${isEditing ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed' : 'bg-white border-slate-300'}`}
+                required
+              />
+              {isDropdownOpen && !isEditing && (
+                <ul className="absolute z-10 w-full bg-white border border-slate-200 shadow-xl max-h-48 overflow-y-auto rounded-lg mt-1">
+                  {filteredNama.length > 0 ? (
+                    filteredNama.map((nama, index) => (
+                      <li key={index} onClick={() => { setNamaWarga(nama); setIsDropdownOpen(false); }} className="p-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer border-b border-slate-50 transition">
+                        {nama}
+                      </li>
+                    ))
+                  ) : (
+                    <li className="p-2.5 text-sm text-slate-500 italic">Nama belum ada di DB</li>
+                  )}
+                  {namaWarga.trim() !== '' && !daftarNamaUnik.includes(namaWarga) && (
+                    <li onClick={() => setIsDropdownOpen(false)} className="p-2.5 text-sm bg-blue-50 text-blue-800 font-semibold cursor-pointer sticky bottom-0 border-t border-blue-100">
+                      + Jadikan "{namaWarga}" warga baru
+                    </li>
+                  )}
+                </ul>
+              )}
+            </div>
+            
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Bulan</label>
+              <select 
+                value={bulanPilih}
+                onChange={(e) => {
+                  const bulan = e.target.value;
+                  setBulanPilih(bulan);
+                  if (isEditing) {
+                    const currentResident = residents.find(r => r.$id === isEditing);
+                    if (currentResident) setNominal(String(currentResident[bulan as keyof BillingRecord] || 0));
+                  }
+                }}
+                className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none bg-white focus:ring-2 focus:ring-blue-100 h-[42px]"
+              >
+                <option value="November">November</option>
+                <option value="Desember">Desember</option>
+                <option value="Januari">Januari</option>
+                <option value="Febuari">Februari</option>
+                <option value="Maret">Maret</option>
+                <option value="April">April</option>
+                <option value="Mei">Mei</option>
+                <option value="Juni">Juni</option>
+                <option value="Juli">Juli</option>
+                <option value="Agustus">Agustus</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Nominal (Rp)</label>
+              <input 
+                type="number" 
+                placeholder="10000" 
+                value={nominal}
+                onChange={(e) => setNominal(e.target.value)}
+                className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-100 h-[42px]"
+                required
+              />
+            </div>
+            <div className="h-full flex items-end">
+              <button type="submit" className={`w-full text-white font-medium py-2.5 px-4 rounded-lg text-sm transition h-[42px] ${isEditing ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-900 hover:bg-blue-800'}`}>
+                {isEditing ? '💾 Update Record' : '💾 Save Record'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* TABLE DATA */}
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm mb-6 flex flex-col">
+        <div className="p-5 border-b border-slate-200">
+          <h3 className="font-bold text-lg text-slate-800">Tabel Iuran Warga RT 01</h3>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse min-w-[1200px]">
+            <thead>
+              <tr className="border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wider bg-slate-50">
+                <th className="p-4 font-semibold">Nama</th>
+                <th className="p-4 font-semibold text-center">Nov</th>
+                <th className="p-4 font-semibold text-center">Des</th>
+                <th className="p-4 font-semibold text-center">Jan</th>
+                <th className="p-4 font-semibold text-center">Feb</th>
+                <th className="p-4 font-semibold text-center">Mar</th>
+                <th className="p-4 font-semibold text-center">Apr</th>
+                <th className="p-4 font-semibold text-center">Mei</th>
+                <th className="p-4 font-semibold text-center">Jun</th>
+                <th className="p-4 font-semibold text-center">Jul</th>
+                <th className="p-4 font-semibold text-center">Agu</th>
+                {/* Kolom Aksi hanya muncul untuk Barudak & Admin */}
+                {userRole !== 'warga' && (
+                  <th className="p-4 font-semibold text-center bg-slate-100 border-l border-slate-200">Aksi</th>
+                )}
+              </tr>
+            </thead>
+            <tbody className="text-sm">
+              {loading ? (
+                <tr><td colSpan={12} className="p-6 text-center text-slate-400">Memuat data dari database...</td></tr>
+              ) : residents.length === 0 ? (
+                <tr><td colSpan={12} className="p-6 text-center text-slate-400">Belum ada data tersimpan.</td></tr>
+              ) : (
+                residents.map((item) => (
+                  <tr key={item.$id} className={`border-b border-slate-100 hover:bg-slate-50 transition ${isEditing === item.$id ? 'bg-orange-50' : ''}`}>
+                    <td className="p-4 font-medium text-slate-800">{item.Nama}</td>
+                    <td className="p-4 text-center">{item.November?.toLocaleString('id-ID') || 0}</td>
+                    <td className="p-4 text-center">{item.Desember?.toLocaleString('id-ID') || 0}</td>
+                    <td className="p-4 text-center">{item.Januari?.toLocaleString('id-ID') || 0}</td>
+                    <td className="p-4 text-center">{item.Febuari?.toLocaleString('id-ID') || 0}</td>
+                    <td className="p-4 text-center">{item.Maret?.toLocaleString('id-ID') || 0}</td>
+                    <td className="p-4 text-center">{item.April?.toLocaleString('id-ID') || 0}</td>
+                    <td className="p-4 text-center">{item.Mei?.toLocaleString('id-ID') || 0}</td>
+                    <td className="p-4 text-center">{item.Juni?.toLocaleString('id-ID') || 0}</td>
+                    <td className="p-4 text-center">{item.Juli?.toLocaleString('id-ID') || 0}</td>
+                    <td className="p-4 text-center">{item.Agustus?.toLocaleString('id-ID') || 0}</td>
+                    
+                    {/* TOMBOL AKSI: EDIT (Barudak & Admin), HAPUS (Hanya Admin) */}
+                    {userRole !== 'warga' && (
+                      <td className="p-4 text-center bg-slate-50 border-l border-slate-100">
+                        <div className="flex items-center justify-center gap-2">
+                          <button 
+                            type="button"
+                            onClick={() => handleEdit(item)}
+                            className="px-3 py-1 bg-blue-600 text-white rounded shadow-sm hover:bg-blue-700 font-semibold transition text-xs"
+                          >
+                            Edit
+                          </button>
+                          
+                          {/* Tombol Hapus disembunyikan untuk Barudak, hanya muncul jika Admin */}
+                          {userRole === 'admin' && (
+                            <button 
+                              type="button"
+                              onClick={() => handleDelete(item.$id, item.Nama)}
+                              className="px-3 py-1 bg-red-600 text-white rounded shadow-sm hover:bg-red-700 font-semibold transition text-xs"
+                            >
+                              Hapus
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </PageLayout>
+  );
+}
