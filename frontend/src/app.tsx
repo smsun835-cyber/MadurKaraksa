@@ -5,6 +5,10 @@ import RTBilling from './pages/RT03Billing'; // Halaman RT 03 yang dibuat sebelu
 import RT01Billing from './pages/RT01Billing';
 import RT02Billing from './pages/RT02Billing';
 import Login from './pages/login';
+// Jangan lupa import komponen barunya di bagian paling atas
+import LaporanKegiatan from './pages/LaporanKegiatan';
+
+// Tambahkan di dalam <Routes> Anda
 
 function App() {
   return (
@@ -15,6 +19,7 @@ function App() {
         <Route path="/rt-01" element={<RT01Billing />} />
         <Route path="/rt-02" element={<RT02Billing />} />
         <Route path="/rt-03" element={<RTBilling />} />
+        <Route path="/laporan-kegiatan" element={<LaporanKegiatan />} />
       </Routes>
     
   );

@@ -55,7 +55,6 @@ export default function RT01Billing() {
   // --- FUNGSI DOWNLOAD PDF ---
   const handleDownloadPDF = () => {
     const doc = new jsPDF();
-
     doc.setFontSize(16);
     doc.setTextColor(30, 58, 138);
     doc.text("Laporan Iuran Warga - RT 01", 14, 20);
@@ -97,24 +96,42 @@ export default function RT01Billing() {
 
     try {
       if (isEditing) {
+        // Mode Edit dari tombol "Edit" di tabel
         await databases.updateDocument(DATABASE_ID, COLLECTION_ID_RT01, isEditing, {
           Nama: namaWarga,
           [bulanPilih]: Number(nominal),
         });
         alert(`Data ${namaWarga} berhasil diubah!`);
       } else {
-        await databases.createDocument(DATABASE_ID, COLLECTION_ID_RT01, ID.unique(), {
-          Nama: namaWarga,
-          [bulanPilih]: Number(nominal),
-        });
-        alert(`Data baru untuk ${namaWarga} berhasil disimpan!`);
+        // Mode Input Baru: Cek apakah nama warga sudah ada di database
+        const existingResident = residents.find(
+          (r) => r.Nama.toLowerCase() === namaWarga.toLowerCase().trim()
+        );
+
+        if (existingResident) {
+          // JIKA NAMA SUDAH ADA: Update baris yang lama (tambahkan nominal di bulan yang dipilih)
+          await databases.updateDocument(DATABASE_ID, COLLECTION_ID_RT01, existingResident.$id, {
+            [bulanPilih]: Number(nominal),
+          });
+          alert(`Data iuran bulan ${bulanPilih} berhasil ditambahkan ke baris milik ${namaWarga}!`);
+        } else {
+          // JIKA NAMA BELUM ADA: Buat baris baru
+          await databases.createDocument(DATABASE_ID, COLLECTION_ID_RT01, ID.unique(), {
+            Nama: namaWarga,
+            [bulanPilih]: Number(nominal),
+          });
+          alert(`Warga baru ${namaWarga} berhasil ditambahkan!`);
+        }
       }
+      
+      // Bersihkan form setelah selesai
       setIsEditing(null);
       setNamaWarga('');
       setNominal('');
       fetchData(); 
     } catch (error) {
       console.error("Gagal menyimpan data:", error);
+      alert("Terjadi kesalahan saat menyimpan data.");
     }
   };
 
@@ -123,6 +140,13 @@ export default function RT01Billing() {
     setNamaWarga(item.Nama);
     setNominal(String(item[bulanPilih as keyof BillingRecord] || 0));
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(null);
+    setNamaWarga('');
+    setNominal('');
+    setIsDropdownOpen(false);
   };
 
   const handleDelete = async (id: string, nama: string) => {
@@ -136,54 +160,174 @@ export default function RT01Billing() {
     }
   };
 
+  const daftarNamaUnik = Array.from(new Set(residents.map((r) => r.Nama).filter(Boolean)));
+  const filteredNama = daftarNamaUnik.filter(nama => nama.toLowerCase().includes(namaWarga.toLowerCase()));
+
+  // Perhitungan Ringkasan
+  const months = ['November', 'Desember', 'Januari', 'Febuari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus'] as const;
+  const totalCollected = residents.reduce((acc, curr) => {
+    const sumRow = months.reduce((mAcc, month) => mAcc + (Number(curr[month]) || 0), 0);
+    return acc + sumRow;
+  }, 0);
+  const targetPerCell = 10000;
+  const totalTargetCell = residents.length * months.length * targetPerCell;
+  const pendingDues = Math.max(0, totalTargetCell - totalCollected);
+  const amount75 = totalCollected * 0.75;
+  const amount25 = totalCollected * 0.25;
+  const collectionRate = totalTargetCell > 0 ? ((totalCollected / totalTargetCell) * 100).toFixed(1) : '0';
+
   return (
     <PageLayout activeMenu="rt01">
-      {/* BAGIAN HEADER INI YANG MEMUAT TOMBOL DOWNLOAD PDF */}
+      {/* HEADER HALAMAN */}
       <div className="mb-6 flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold text-blue-900">RT 01 Financial Overview</h2>
           <p className="text-slate-500 text-sm mt-1">Manage monthly dues and payment records for residents of RT 01.</p>
         </div>
-        
-        <div className="flex items-center gap-3">
-          <div className="text-xs bg-slate-100 text-slate-600 px-3 py-1.5 rounded-full font-medium border border-slate-200">
-            Status Akses: <span className="font-bold uppercase text-blue-800">{userRole}</span>
-          </div>
-
-          
+      </div>
 
       {/* KARTU RINGKASAN */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        {/* ... kartu total collected, pending, collection rate ... */}
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Collected</p>
+          <h3 className="text-2xl font-bold text-slate-800 mb-2">Rp {totalCollected.toLocaleString('id-ID')}</h3>
+          <div className="text-xs text-slate-600 space-y-1 pt-2 border-t border-slate-100">
+            <div className="flex justify-between"><span>Alokasi 75%:</span><span className="font-semibold text-blue-900">Rp {amount75.toLocaleString('id-ID')}</span></div>
+            <div className="flex justify-between"><span>Alokasi 25%:</span><span className="font-semibold text-emerald-700">Rp {amount25.toLocaleString('id-ID')}</span></div>
+          </div>
+        </div>
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Pending Dues</p>
+          <h3 className="text-2xl font-bold text-slate-800 mb-1">Rp {pendingDues.toLocaleString('id-ID')}</h3>
+          <p className="text-xs font-medium text-red-500">{residents.length} Terdaftar ({months.length} Bulan Periode)</p>
+        </div>
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Collection Rate</p>
+          <h3 className="text-2xl font-bold text-slate-800 mb-2">{collectionRate}%</h3>
+          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+            <div className="bg-emerald-800 h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(Number(collectionRate), 100)}%` }}></div>
+          </div>
+        </div>
       </div>
 
       {/* FORM INPUT HANYA UNTUK ADMIN/BARUDAK */}
       {userRole !== 'warga' && (
-        <div className="p-6 bg-white rounded-xl border border-slate-200 shadow-sm mb-6">
-          {/* ... isi form ... */}
+        <div className={`p-6 rounded-xl border shadow-sm mb-6 ${isEditing ? 'bg-orange-50 border-orange-200' : 'bg-white border-slate-200'}`}>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-lg text-slate-800">
+              {isEditing ? '✏️ Edit Record Iuran' : 'Input Data Iuran Baru'}
+            </h3>
+            {isEditing && (
+              <button type="button" onClick={handleCancelEdit} className="text-sm bg-white border border-slate-300 px-3 py-1 rounded text-slate-600 hover:text-red-500 font-medium">
+                X Batal Edit
+              </button>
+            )}
+          </div>
+          
+          <form onSubmit={handleSaveRecord} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start relative">
+            <div className="relative">
+              <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Nama Warga</label>
+              <input 
+                type="text"
+                placeholder="Cari atau ketik nama..."
+                value={namaWarga}
+                onChange={(e) => { setNamaWarga(e.target.value); setIsDropdownOpen(true); }}
+                onFocus={() => setIsDropdownOpen(true)}
+                onBlur={() => setTimeout(() => setIsDropdownOpen(false), 200)} 
+                disabled={!!isEditing} 
+                className={`w-full border rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-100 ${isEditing ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed' : 'bg-white border-slate-300'}`}
+                required
+              />
+              {/* === TAMBAHKAN KEMBALI BLOK DROPDOWN INI DI BAWAH INPUT === */}
+              {isDropdownOpen && !isEditing && (
+                <ul className="absolute z-10 w-full bg-white border border-slate-200 shadow-xl max-h-48 overflow-y-auto rounded-lg mt-1">
+                  {filteredNama.length > 0 ? (
+                    filteredNama.map((nama, index) => (
+                      <li 
+                        key={index} 
+                        onMouseDown={() => { setNamaWarga(nama); setIsDropdownOpen(false); }} 
+                        className="p-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer border-b border-slate-50 transition"
+                      >
+                        {nama}
+                      </li>
+                    ))
+                  ) : (
+                    <li className="p-2.5 text-sm text-slate-500 italic">Nama belum ada di DB</li>
+                  )}
+                  {namaWarga.trim() !== '' && !daftarNamaUnik.includes(namaWarga) && (
+                    <li 
+                      onMouseDown={() => setIsDropdownOpen(false)} 
+                      className="p-2.5 text-sm bg-blue-50 text-blue-800 font-semibold cursor-pointer sticky bottom-0 border-t border-blue-100"
+                    >
+                      + Jadikan "{namaWarga}" warga baru
+                    </li>
+                  )}
+                </ul>
+              )}
+              {/* ========================================================== */}
+            </div>
+            
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Bulan</label>
+              <select 
+                value={bulanPilih}
+                onChange={(e) => setBulanPilih(e.target.value)}
+                className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none bg-white focus:ring-2 focus:ring-blue-100 h-[42px]"
+              >
+                <option value="November">November</option>
+                <option value="Desember">Desember</option>
+                <option value="Januari">Januari</option>
+                <option value="Febuari">Februari</option>
+                <option value="Maret">Maret</option>
+                <option value="April">April</option>
+                <option value="Mei">Mei</option>
+                <option value="Juni">Juni</option>
+                <option value="Juli">Juli</option>
+                <option value="Agustus">Agustus</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Nominal (Rp)</label>
+              <input 
+                type="number" 
+                placeholder="10000" 
+                value={nominal}
+                onChange={(e) => setNominal(e.target.value)}
+                className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-100 h-[42px]"
+                required
+              />
+            </div>
+            <div className="h-full flex items-end">
+              <button type="submit" className={`w-full text-white font-medium py-2.5 px-4 rounded-lg text-sm transition h-[42px] ${isEditing ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-900 hover:bg-blue-800'}`}>
+                {isEditing ? '💾 Update Record' : '💾 Save Record'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
-      {/* TABEL DATA */}
+      {/* TABEL DATA & TOMBOL DOWNLOAD PDF */}
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm mb-6 flex flex-col">
-        <div className="p-5 border-b border-slate-200">
+        
+        {/* ===== INI ADALAH BAGIAN HEADER TABEL YANG BERISI TOMBOL ===== */}
+        <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-xl">
           <h3 className="font-bold text-lg text-slate-800">Tabel Iuran Warga RT 01</h3>
-          {/* TOMBOL DOWNLOAD */}
+          
           <button 
             type="button"
             onClick={handleDownloadPDF}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm py-2 px-4 rounded-lg shadow-sm transition flex items-center gap-2 cursor-pointer"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm py-2 px-4 rounded-lg shadow-md transition flex items-center gap-2 cursor-pointer"
           >
-            📥 Download PDF
+            📥 DOWNLOAD Laporan PDF
           </button>
         </div>
-      </div>
-        </div>
-        
+        {/* ============================================================= */}
+
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[1200px]">
             <thead>
-              <tr className="border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wider bg-slate-50">
+              <tr className="border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wider bg-white">
                 <th className="p-4 font-semibold">Nama</th>
                 <th className="p-4 font-semibold text-center">Nov</th>
                 <th className="p-4 font-semibold text-center">Des</th>
@@ -195,10 +339,15 @@ export default function RT01Billing() {
                 <th className="p-4 font-semibold text-center">Jun</th>
                 <th className="p-4 font-semibold text-center">Jul</th>
                 <th className="p-4 font-semibold text-center">Agu</th>
-                {userRole !== 'warga' && <th className="p-4 font-semibold text-center bg-slate-100 border-l">Aksi</th>}
+                {userRole !== 'warga' && <th className="p-4 font-semibold text-center bg-slate-50 border-l">Aksi</th>}
               </tr>
             </thead>
             <tbody className="text-sm">
+              {residents.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={12} className="p-6 text-center text-slate-500 italic">Belum ada data warga di RT 01</td>
+                </tr>
+              )}
               {residents.map((item) => (
                 <tr key={item.$id} className="border-b border-slate-100 hover:bg-slate-50">
                   <td className="p-4 font-medium text-slate-800">{item.Nama}</td>
@@ -214,9 +363,9 @@ export default function RT01Billing() {
                   <td className="p-4 text-center">{item.Agustus?.toLocaleString('id-ID') || 0}</td>
                   {userRole !== 'warga' && (
                     <td className="p-4 text-center bg-slate-50 border-l">
-                      <button onClick={() => handleEdit(item)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs mr-2">Edit</button>
+                      <button onClick={() => handleEdit(item)} className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs mr-2 transition">Edit</button>
                       {userRole === 'admin' && (
-                        <button onClick={() => handleDelete(item.$id, item.Nama)} className="px-2 py-1 bg-red-600 text-white rounded text-xs">Hapus</button>
+                        <button onClick={() => handleDelete(item.$id, item.Nama)} className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs transition">Hapus</button>
                       )}
                     </td>
                   )}

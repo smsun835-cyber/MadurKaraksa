@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import PageLayout from '../components/layout/PageLayout';
 import { databases, DATABASE_ID, COLLECTION_ID_RT02, getUserRole } from '../services/appwrite';
 import { Query, ID } from 'appwrite';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface BillingRecord {
   $id: string;
@@ -50,28 +52,84 @@ export default function RT02Billing() {
     }
   };
 
+  const handleDownloadPDF = () => {
+      const doc = new jsPDF();
+      doc.setFontSize(16);
+      doc.setTextColor(30, 58, 138);
+      doc.text("Laporan Iuran Warga - RT 01", 14, 20);
+  
+      doc.setFontSize(10);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Dicetak pada: ${new Date().toLocaleDateString('id-ID')}`, 14, 27);
+  
+      const tableColumn = ["Nama Warga", "Nov", "Des", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu"];
+      const tableRows = residents.map(item => [
+        item.Nama,
+        (item.November || 0).toLocaleString('id-ID'),
+        (item.Desember || 0).toLocaleString('id-ID'),
+        (item.Januari || 0).toLocaleString('id-ID'),
+        (item.Febuari || 0).toLocaleString('id-ID'),
+        (item.Maret || 0).toLocaleString('id-ID'),
+        (item.April || 0).toLocaleString('id-ID'),
+        (item.Mei || 0).toLocaleString('id-ID'),
+        (item.Juni || 0).toLocaleString('id-ID'),
+        (item.Juli || 0).toLocaleString('id-ID'),
+        (item.Agustus || 0).toLocaleString('id-ID')
+      ]);
+  
+      autoTable(doc, {
+        head: [tableColumn],
+        body: tableRows,
+        startY: 35,
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [30, 58, 138] },
+      });
+  
+      doc.save("Laporan_Iuran_RT_02.pdf");
+    };
+
   const daftarNamaUnik = Array.from(new Set(residents.map((r) => r.Nama).filter(Boolean)));
   const filteredNama = daftarNamaUnik.filter(nama => nama.toLowerCase().includes(namaWarga.toLowerCase()));
 
-  const handleSaveRecord = async (e: React.FormEvent) => {
+ const handleSaveRecord = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!namaWarga.trim()) return alert("Silakan isi atau pilih nama warga!");
 
     try {
       if (isEditing) {
+        // Mode Edit dari tombol "Edit" di tabel
         await databases.updateDocument(DATABASE_ID, COLLECTION_ID_RT02, isEditing, {
           Nama: namaWarga,
           [bulanPilih]: Number(nominal),
         });
-        alert(`Data ${namaWarga} untuk bulan ${bulanPilih} berhasil diubah!`);
+        alert(`Data ${namaWarga} berhasil diubah!`);
       } else {
-        await databases.createDocument(DATABASE_ID, COLLECTION_ID_RT02, ID.unique(), {
-          Nama: namaWarga,
-          [bulanPilih]: Number(nominal),
-        });
-        alert(`Data baru untuk ${namaWarga} berhasil disimpan!`);
+        // Mode Input Baru: Cek apakah nama warga sudah ada di database
+        const existingResident = residents.find(
+          (r) => r.Nama.toLowerCase() === namaWarga.toLowerCase().trim()
+        );
+
+        if (existingResident) {
+          // JIKA NAMA SUDAH ADA: Update baris yang lama (tambahkan nominal di bulan yang dipilih)
+          await databases.updateDocument(DATABASE_ID, COLLECTION_ID_RT02, existingResident.$id, {
+            [bulanPilih]: Number(nominal),
+          });
+          alert(`Data iuran bulan ${bulanPilih} berhasil ditambahkan ke baris milik ${namaWarga}!`);
+        } else {
+          // JIKA NAMA BELUM ADA: Buat baris baru
+          await databases.createDocument(DATABASE_ID, COLLECTION_ID_RT02, ID.unique(), {
+            Nama: namaWarga,
+            [bulanPilih]: Number(nominal),
+          });
+          alert(`Warga baru ${namaWarga} berhasil ditambahkan!`);
+        }
       }
-      handleCancelEdit();
+      
+      // Bersihkan form setelah selesai
+      setIsEditing(null);
+      setNamaWarga('');
+      setNominal('');
       fetchData(); 
     } catch (error) {
       console.error("Gagal menyimpan data:", error);
@@ -186,7 +244,12 @@ export default function RT02Billing() {
                 <ul className="absolute z-10 w-full bg-white border border-slate-200 shadow-xl max-h-48 overflow-y-auto rounded-lg mt-1">
                   {filteredNama.length > 0 ? (
                     filteredNama.map((nama, index) => (
-                      <li key={index} onClick={() => { setNamaWarga(nama); setIsDropdownOpen(false); }} className="p-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer border-b border-slate-50 transition">
+                      <li 
+                        key={index} 
+                        // UBAH onClick MENJADI onMouseDown DI SINI:
+                        onMouseDown={() => { setNamaWarga(nama); setIsDropdownOpen(false); }} 
+                        className="p-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer border-b border-slate-50 transition"
+                      >
                         {nama}
                       </li>
                     ))
@@ -194,7 +257,11 @@ export default function RT02Billing() {
                     <li className="p-2.5 text-sm text-slate-500 italic">Nama belum ada di DB</li>
                   )}
                   {namaWarga.trim() !== '' && !daftarNamaUnik.includes(namaWarga) && (
-                    <li onClick={() => setIsDropdownOpen(false)} className="p-2.5 text-sm bg-blue-50 text-blue-800 font-semibold cursor-pointer sticky bottom-0 border-t border-blue-100">
+                    <li 
+                      // UBAH onClick MENJADI onMouseDown DI SINI:
+                      onMouseDown={() => setIsDropdownOpen(false)} 
+                      className="p-2.5 text-sm bg-blue-50 text-blue-800 font-semibold cursor-pointer sticky bottom-0 border-t border-blue-100"
+                    >
                       + Jadikan "{namaWarga}" warga baru
                     </li>
                   )}
@@ -250,9 +317,21 @@ export default function RT02Billing() {
       )}
 
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm mb-6 flex flex-col">
-        <div className="p-5 border-b border-slate-200">
+
+         {/* ===== INI ADALAH BAGIAN HEADER TABEL YANG BERISI TOMBOL ===== */}
+        <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-xl">
           <h3 className="font-bold text-lg text-slate-800">Tabel Iuran Warga RT 02</h3>
+
+          <button 
+            type="button"
+            onClick={handleDownloadPDF}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm py-2 px-4 rounded-lg shadow-md transition flex items-center gap-2 cursor-pointer"
+          >
+            📥 DOWNLOAD Laporan PDF
+          </button>
         </div>
+
+        {/* ============================================================= */}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[1200px]">
             <thead>

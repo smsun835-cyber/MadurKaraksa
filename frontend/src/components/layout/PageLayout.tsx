@@ -63,13 +63,21 @@ export default function PageLayout({ children, activeMenu }: PageLayoutProps) {
             </div>
           </div>
 
-          
-
           <nav className="px-4 space-y-1 overflow-y-auto">
             <MenuLink to="/" icon="📊" label="Dashboard" isActive={activeMenu === 'dashboard'} />
             <MenuLink to="/rt-01" icon="💵" label="RT 01 Billing" isActive={activeMenu === 'rt01'} />
             <MenuLink to="/rt-02" icon="💵" label="RT 02 Billing" isActive={activeMenu === 'rt02'} />
             <MenuLink to="/rt-03" icon="💵" label="RT 03 Billing" isActive={activeMenu === 'rt03'} />
+
+            {/* HANYA MUNCUL UNTUK ROLE BENDAHARA ATAU ADMIN */}
+            {(userRole === 'bendahara' || userRole === 'admin') && (
+              <MenuLink 
+                to="/laporan-kegiatan" 
+                icon="📋" 
+                label="Laporan Kegiatan" 
+                isActive={activeMenu === 'kegiatan'} 
+              />
+            )}
           </nav>
         </div>
 
@@ -92,7 +100,7 @@ export default function PageLayout({ children, activeMenu }: PageLayoutProps) {
           )}
         </div>
       </aside>
-
+        
       {/* MAIN CONTENT AREA */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         <header className="bg-white h-16 flex items-center justify-between px-4 lg:px-8 border-b border-slate-200">
