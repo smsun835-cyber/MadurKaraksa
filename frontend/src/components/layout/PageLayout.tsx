@@ -10,6 +10,7 @@ interface PageLayoutProps {
 export default function PageLayout({ children, activeMenu }: PageLayoutProps) {
   const [userRole, setUserRole] = useState<string>('warga');
   const [userName, setUserName] = useState<string>('Pengunjung');
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false); // State untuk toggle sidebar di HP
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -44,26 +45,46 @@ export default function PageLayout({ children, activeMenu }: PageLayoutProps) {
   };
 
   return (
-    <div className="bg-slate-50 font-sans text-slate-800 h-screen overflow-hidden flex">
-      {/* SIDEBAR */}
-      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col h-full justify-between">
+    <div className="bg-slate-50 font-sans text-slate-800 h-screen overflow-hidden flex relative">
+      
+      {/* OVERLAY GELAP DI HP KETIKA SIDEBAR DIBUKA */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-20 md:hidden transition-opacity"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      {/* SIDEBAR RESPONSIF */}
+      <aside className={`fixed md:relative inset-y-0 left-0 z-30 w-64 bg-white border-r border-slate-200 flex flex-col h-full justify-between transform transition-transform duration-300 ease-in-out ${
+        isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+      }`}>
         <div>
-          <div className="p-6">
-            <h1 className="text-xl font-bold text-blue-900 leading-tight">
-              Madur Raksa<br />
-            </h1>
-            <div className="mt-2 flex items-center gap-3">
-              <div className="w-8 h-8 bg-blue-800 text-white rounded flex items-center justify-center font-bold">
-                {userName.charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <p className="text-sm font-bold leading-none">{userName}</p>
-                <p className="text-xs text-slate-500 uppercase">Role: {userRole}</p>
+          <div className="p-6 flex justify-between items-center">
+            <div>
+              <h1 className="text-xl font-bold text-blue-900 leading-tight">
+                Madur Raksa<br />
+              </h1>
+              <div className="mt-2 flex items-center gap-3">
+                <div className="w-8 h-8 bg-blue-800 text-white rounded flex items-center justify-center font-bold">
+                  {userName.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <p className="text-sm font-bold leading-none">{userName}</p>
+                  <p className="text-xs text-slate-500 uppercase">Role: {userRole}</p>
+                </div>
               </div>
             </div>
+            {/* Tombol Close (X) khusus untuk menutup sidebar di HP */}
+            <button 
+              onClick={() => setIsSidebarOpen(false)}
+              className="md:hidden text-slate-500 hover:text-slate-800 text-xl font-bold p-1"
+            >
+              ✕
+            </button>
           </div>
 
-          <nav className="px-4 space-y-1 overflow-y-auto">
+          <nav className="px-4 space-y-1 overflow-y-auto" onClick={() => setIsSidebarOpen(false)}>
             <MenuLink to="/" icon="📊" label="Dashboard" isActive={activeMenu === 'dashboard'} />
             <MenuLink to="/rt-01" icon="💵" label="RT 01 Billing" isActive={activeMenu === 'rt01'} />
             <MenuLink to="/rt-02" icon="💵" label="RT 02 Billing" isActive={activeMenu === 'rt02'} />
@@ -102,10 +123,16 @@ export default function PageLayout({ children, activeMenu }: PageLayoutProps) {
       </aside>
         
       {/* MAIN CONTENT AREA */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
+      <div className="flex-1 flex flex-col h-full overflow-hidden w-full">
         <header className="bg-white h-16 flex items-center justify-between px-4 lg:px-8 border-b border-slate-200">
           <div className="flex items-center gap-4">
-            <button className="md:hidden text-slate-600 text-2xl">☰</button>
+            {/* TOMBOL HAMBURGER UNTUK MEMBUKA SIDEBAR DI HP */}
+            <button 
+              onClick={() => setIsSidebarOpen(true)}
+              className="md:hidden text-slate-600 text-2xl focus:outline-none p-1 rounded hover:bg-slate-100"
+            >
+              ☰
+            </button>
           </div>
           
           <div className="flex items-center gap-4">
