@@ -342,7 +342,7 @@ export default function RT01Billing() {
         <th className="py-3 px-4 font-semibold sticky top-0 z-10 text-sm text-slate-600 border-b border-slate-200">Juni</th>
         <th className="py-3 px-4 font-semibold sticky top-0 z-10 text-sm text-slate-600 border-b border-slate-200">Juli</th>
         <th className="py-3 px-4 font-semibold sticky top-0 z-10 text-sm text-slate-600 border-b border-slate-200">Agustus</th>
-        <th className="py-3 px-4 font-semibold sticky top-0 z-10 text-sm text-slate-600 border-b border-slate-200">Aksi</th>
+        
                 {userRole !== 'warga' && <th className="p-4 font-semibold text-center bg-slate-50 border-l">Aksi</th>}
               </tr>
             </thead>
