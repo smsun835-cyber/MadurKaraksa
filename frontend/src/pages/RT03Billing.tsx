@@ -56,7 +56,7 @@ export default function RT03Billing() {
       const doc = new jsPDF();
       doc.setFontSize(16);
       doc.setTextColor(30, 58, 138);
-      doc.text("Laporan Iuran Warga - RT 01", 14, 20);
+      doc.text("Laporan Iuran Warga - RT 03 (Rompe)", 14, 20);
   
       doc.setFontSize(10);
       doc.setTextColor(100, 116, 139);
