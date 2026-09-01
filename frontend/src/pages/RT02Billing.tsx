@@ -332,11 +332,13 @@ export default function RT02Billing() {
         </div>
 
         {/* ============================================================= */}
-        <div className="overflow-x-auto">
+        <div className="w-full overflow-auto max-h-[65vh] border-t border-slate-200">
           <table className="w-full text-left border-collapse min-w-[1200px]">
-            <thead>
-              <tr className="border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wider bg-slate-50">
-                 <th className="py-3 px-4 font-semibold sticky top-0 left-0 z-20 bg-slate-100 py-3 px-4 text-sm text-slate-600  border-b border-slate-200">NAMA</th>
+            <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+  <tr className="text-xs text-slate-500 uppercase tracking-wider">
+    <th className="py-3 px-4 font-semibold sticky top-0 left-0 z-20 bg-slate-100 text-sm text-slate-600 border-b border-slate-200 shadow-[1px_0_0_0_#e2e8f0]">
+       Nama Warga
+    </th>
         <th className="py-3 px-4 font-semibold sticky top-0 z-10 text-sm text-slate-600 border-b border-slate-200">November</th>
         <th className="py-3 px-4 font-semibold sticky top-0 z-10 text-sm text-slate-600 border-b border-slate-200">Desember</th>
         <th className="py-3 px-4 font-semibold sticky top-0 z-10 text-sm text-slate-600 border-b border-slate-200">Januari</th>
@@ -360,7 +362,9 @@ export default function RT02Billing() {
               ) : (
                 residents.map((item) => (
                   <tr key={item.$id} className={`border-b border-slate-100 hover:bg-slate-50 transition ${isEditing === item.$id ? 'bg-orange-50' : ''}`}>
-                    <td className="p-4 font-medium text-slate-800">{item.Nama}</td>
+                    <td className="p-4 font-medium text-slate-800 sticky left-0 bg-white z-10 shadow-[1px_0_0_0_#e2e8f0]">
+                     {item.Nama}
+                    </td>
                     <td className="p-4 text-center">{item.November?.toLocaleString('id-ID') || 0}</td>
                     <td className="p-4 text-center">{item.Desember?.toLocaleString('id-ID') || 0}</td>
                     <td className="p-4 text-center">{item.Januari?.toLocaleString('id-ID') || 0}</td>

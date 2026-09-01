@@ -354,7 +354,9 @@ export default function RT01Billing() {
               )}
               {residents.map((item) => (
                 <tr key={item.$id} className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="p-4 font-medium text-slate-800">{item.Nama}</td>
+                 <td className="p-4 font-medium text-slate-800 sticky left-0 bg-white z-10 shadow-[1px_0_0_0_#e2e8f0]">
+                   {item.Nama}
+                  </td>
                   <td className="p-4 text-center">{item.November?.toLocaleString('id-ID') || 0}</td>
                   <td className="p-4 text-center">{item.Desember?.toLocaleString('id-ID') || 0}</td>
                   <td className="p-4 text-center">{item.Januari?.toLocaleString('id-ID') || 0}</td>
