@@ -57,8 +57,8 @@ export default function PageLayout({ children, activeMenu }: PageLayoutProps) {
 
       {/* SIDEBAR RESPONSIF */}
       <aside className={`fixed md:relative inset-y-0 left-0 z-30 w-64 bg-white border-r border-slate-200 flex flex-col h-full justify-between transform transition-transform duration-300 ease-in-out ${
-        isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
-      }`}>
+  isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+}`}>
         <div>
           <div className="p-6 flex justify-between items-center">
             <div>
@@ -127,12 +127,13 @@ export default function PageLayout({ children, activeMenu }: PageLayoutProps) {
         <header className="bg-white h-16 flex items-center justify-between px-4 lg:px-8 border-b border-slate-200">
           <div className="flex items-center gap-4">
             {/* TOMBOL HAMBURGER UNTUK MEMBUKA SIDEBAR DI HP */}
-            <button 
-              onClick={() => setIsSidebarOpen(true)}
-              className="md:hidden text-slate-600 text-2xl focus:outline-none p-1 rounded hover:bg-slate-100"
-            >
-              ☰
-            </button>
+            {/* TOMBOL HAMBURGER UNTUK MEMBUKA/MENUTUP SIDEBAR DI HP */}
+<button 
+  onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
+  className="md:hidden text-slate-600 text-2xl focus:outline-none p-1 rounded hover:bg-slate-100"
+>
+  ☰
+</button>
           </div>
           
           <div className="flex items-center gap-4">

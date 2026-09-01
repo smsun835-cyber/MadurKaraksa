@@ -324,21 +324,25 @@ export default function RT01Billing() {
         </div>
         {/* ============================================================= */}
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[1200px]">
-            <thead>
-              <tr className="border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wider bg-white">
-                <th className="p-4 font-semibold">Nama</th>
-                <th className="p-4 font-semibold text-center">Nov</th>
-                <th className="p-4 font-semibold text-center">Des</th>
-                <th className="p-4 font-semibold text-center">Jan</th>
-                <th className="p-4 font-semibold text-center">Feb</th>
-                <th className="p-4 font-semibold text-center">Mar</th>
-                <th className="p-4 font-semibold text-center">Apr</th>
-                <th className="p-4 font-semibold text-center">Mei</th>
-                <th className="p-4 font-semibold text-center">Jun</th>
-                <th className="p-4 font-semibold text-center">Jul</th>
-                <th className="p-4 font-semibold text-center">Agu</th>
+       <div className="w-full overflow-auto max-h-[65vh] border border-slate-200 rounded-lg shadow-sm">
+  
+  <table className="w-full min-w-[1000px] border-collapse text-left">
+    
+    {/* 2. Tambahkan sticky, top-0, z-10, dan background color pada THEAD */}
+    <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+      <tr>
+        <th className="py-3 px-4 font-semibold text-sm text-slate-600 border-b border-slate-200">NAMA</th>
+        <th className="py-3 px-4 font-semibold text-sm text-slate-600 border-b border-slate-200">November</th>
+        <th className="py-3 px-4 font-semibold text-sm text-slate-600 border-b border-slate-200">Desember</th>
+        <th className="py-3 px-4 font-semibold text-sm text-slate-600 border-b border-slate-200">Januari</th>
+        <th className="py-3 px-4 font-semibold text-sm text-slate-600 border-b border-slate-200">Febuari</th>
+        <th className="py-3 px-4 font-semibold text-sm text-slate-600 border-b border-slate-200">Maret</th>
+        <th className="py-3 px-4 font-semibold text-sm text-slate-600 border-b border-slate-200">April</th>
+        <th className="py-3 px-4 font-semibold text-sm text-slate-600 border-b border-slate-200">Mei</th>
+        <th className="py-3 px-4 font-semibold text-sm text-slate-600 border-b border-slate-200">Juni</th>
+        <th className="py-3 px-4 font-semibold text-sm text-slate-600 border-b border-slate-200">Juli</th>
+        <th className="py-3 px-4 font-semibold text-sm text-slate-600 border-b border-slate-200">Agustus</th>
+        <th className="py-3 px-4 font-semibold text-sm text-slate-600 border-b border-slate-200">Aksi</th>
                 {userRole !== 'warga' && <th className="p-4 font-semibold text-center bg-slate-50 border-l">Aksi</th>}
               </tr>
             </thead>
