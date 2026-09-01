@@ -331,18 +331,18 @@ export default function RT01Billing() {
     {/* 2. Tambahkan sticky, top-0, z-10, dan background color pada THEAD */}
     <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
       <tr>
-        <th className="py-3 px-4 font-semibold sticky top-0 z-10 text-sm text-slate-600 border-b border-slate-200">NAMA</th>
+        <th className="py-3 px-4 font-semibold sticky top-0 left-0 z-20 bg-slate-100 py-3 px-4 text-sm text-slate-600  border-b border-slate-200">NAMA</th>
         <th className="py-3 px-4 font-semibold sticky top-0 z-10 text-sm text-slate-600 border-b border-slate-200">November</th>
         <th className="py-3 px-4 font-semibold sticky top-0 z-10 text-sm text-slate-600 border-b border-slate-200">Desember</th>
         <th className="py-3 px-4 font-semibold sticky top-0 z-10 text-sm text-slate-600 border-b border-slate-200">Januari</th>
         <th className="py-3 px-4 font-semibold sticky top-0 z-10 text-sm text-slate-600 border-b border-slate-200">Febuari</th>
         <th className="py-3 px-4 font-semibold sticky top-0 z-10 text-sm text-slate-600 border-b border-slate-200">Maret</th>
         <th className="py-3 px-4 font-semibold sticky top-0 z-10 text-sm text-slate-600 border-b border-slate-200">April</th>
-        <th className="py-3 px-4 font-semibold text-sm text-slate-600 border-b border-slate-200">Mei</th>
-        <th className="py-3 px-4 font-semibold text-sm text-slate-600 border-b border-slate-200">Juni</th>
-        <th className="py-3 px-4 font-semibold text-sm text-slate-600 border-b border-slate-200">Juli</th>
-        <th className="py-3 px-4 font-semibold text-sm text-slate-600 border-b border-slate-200">Agustus</th>
-        <th className="py-3 px-4 font-semibold text-sm text-slate-600 border-b border-slate-200">Aksi</th>
+        <th className="py-3 px-4 font-semibold sticky top-0 z-10 text-sm text-slate-600 border-b border-slate-200">Mei</th>
+        <th className="py-3 px-4 font-semibold sticky top-0 z-10 text-sm text-slate-600 border-b border-slate-200">Juni</th>
+        <th className="py-3 px-4 font-semibold sticky top-0 z-10 text-sm text-slate-600 border-b border-slate-200">Juli</th>
+        <th className="py-3 px-4 font-semibold sticky top-0 z-10 text-sm text-slate-600 border-b border-slate-200">Agustus</th>
+        <th className="py-3 px-4 font-semibold sticky top-0 z-10 text-sm text-slate-600 border-b border-slate-200">Aksi</th>
                 {userRole !== 'warga' && <th className="p-4 font-semibold text-center bg-slate-50 border-l">Aksi</th>}
               </tr>
             </thead>
