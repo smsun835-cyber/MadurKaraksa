@@ -10,6 +10,8 @@ export const databases = new Databases(client);
 // ---> TAMBAHKAN BARIS INI (Membuat instansiasi objek 'account') <---
 export const account = new Account(client);
 
+export {Client};
+
 export const DATABASE_ID = '6a7be3640032a6fe80bb';
 export const COLLECTION_ID_RT01 = 'rt_1';
 export const COLLECTION_ID_RT02 = 'rt_2';

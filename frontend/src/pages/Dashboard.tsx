@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import PageLayout from '../components/layout/PageLayout';
-import { databases, DATABASE_ID, COLLECTION_ID_RT01, COLLECTION_ID_RT02, COLLECTION_ID_RT03 } from '../services/appwrite';
+import { databases, DATABASE_ID, COLLECTION_ID_RT01, COLLECTION_ID_RT02, COLLECTION_ID_RT03 } from '../services/appwriteConfig';
 import { Query } from 'appwrite';
 
 interface BillingRecord {

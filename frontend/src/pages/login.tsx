@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { account } from '../services/appwrite';
+import { account } from '../services/appwriteConfig';
 import { useNavigate } from 'react-router-dom';
 
 export default function Login() {

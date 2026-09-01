@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import PageLayout from '../components/layout/PageLayout';
-import { databases, DATABASE_ID, COLLECTION_ID_RT02, getUserRole } from '../services/appwrite';
+import { databases, DATABASE_ID, COLLECTION_ID_RT02, getUserRole } from '../services/appwriteConfig';
 import { Query, ID } from 'appwrite';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';

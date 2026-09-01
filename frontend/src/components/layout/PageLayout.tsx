@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { account, getUserRole } from '../../services/appwrite';
+import { account, getUserRole } from '../../services/appwriteConfig';
 
 interface PageLayoutProps {
   children: React.ReactNode;

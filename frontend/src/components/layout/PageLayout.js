@@ -1,7 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { account, getUserRole } from '../../services/appwrite';
+import { account, getUserRole } from '../../services/appwriteConfig';
 export default function PageLayout({ children, activeMenu }) {
     const [userRole, setUserRole] = useState('warga');
     const [userName, setUserName] = useState('Pengunjung');
