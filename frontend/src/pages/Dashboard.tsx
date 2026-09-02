@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import PageLayout from '../components/layout/PageLayout';
-import { databases, DATABASE_ID, COLLECTION_ID_RT01, COLLECTION_ID_RT02, COLLECTION_ID_RT03 } from '../services/appwriteConfig';
+import { databases, DATABASE_ID, COLLECTION_ID_RT01, COLLECTION_ID_RT02, COLLECTION_ID_RT03, getUserRole } from '../services/appwriteConfig';
 import { Query } from 'appwrite';
 
 interface BillingRecord {
@@ -23,13 +23,20 @@ export default function Dashboard() {
   const [dataRT02, setDataRT02] = useState<BillingRecord[]>([]);
   const [dataRT03, setDataRT03] = useState<BillingRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isResetting, setIsResetting] = useState(false);
+  const [userRole, setUserRole] = useState('warga'); // Jangan lupa import getUserRole dari appwr
 
   const months = ['November', 'Desember', 'Januari', 'Febuari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus'] as const;
   const targetPerCell = 10000; // Asumsi iuran Rp 10.000 per bulan per warga
 
   useEffect(() => {
+  async function init() {
+    const role = await getUserRole();
+    setUserRole(role);
     fetchAllData();
-  }, []);
+  }
+  init();
+}, []);
 
   const fetchAllData = async () => {
     try {
@@ -81,12 +88,80 @@ export default function Dashboard() {
   const rateRT02 = targetRT02 > 0 ? ((totalRT02 / targetRT02) * 100).toFixed(1) : '0';
   const rateRT03 = targetRT03 > 0 ? ((totalRT03 / targetRT03) * 100).toFixed(1) : '0';
 
+  // --- FUNGSI RESET DATA IURAN (KHUSUS ADMIN) ---
+  const handleResetPeriode = async () => {
+    // 1. Peringatan Pertama
+    if (!window.confirm("⚠️ PERINGATAN BERBAHAYA!\n\nAnda yakin ingin mengosongkan SELURUH data iuran di RT 01, 02, dan 03? Nama warga akan dipertahankan, tapi semua nominal uang akan menjadi Rp 0.")) {
+      return;
+    }
+
+    // 2. Konfirmasi Ganda (Ketik RESET) untuk mencegah kepencet
+    const konfirmasi = window.prompt("Ketik kata 'RESET' (huruf besar semua) untuk melanjutkan:");
+    if (konfirmasi !== 'RESET') {
+      alert("Proses reset dibatalkan karena kata kunci salah atau dibatalkan.");
+      return;
+    }
+
+    setIsResetting(true);
+    try {
+      // Data yang akan di-update (semua bulan dikembalikan ke 0)
+      const resetPayload = {
+        November: 0, Desember: 0, Januari: 0, Febuari: 0, Maret: 0, 
+        April: 0, Mei: 0, Juni: 0, Juli: 0, Agustus: 0
+      };
+
+      const resetPromises: Promise<any>[] = [];
+
+      // Kumpulkan semua perintah update dari RT 01
+      dataRT01.forEach((warga) => {
+        resetPromises.push(databases.updateDocument(DATABASE_ID, COLLECTION_ID_RT01, warga.$id, resetPayload));
+      });
+
+      // Kumpulkan semua perintah update dari RT 02
+      dataRT02.forEach((warga) => {
+        resetPromises.push(databases.updateDocument(DATABASE_ID, COLLECTION_ID_RT02, warga.$id, resetPayload));
+      });
+
+      // Kumpulkan semua perintah update dari RT 03
+      dataRT03.forEach((warga) => {
+        resetPromises.push(databases.updateDocument(DATABASE_ID, COLLECTION_ID_RT03, warga.$id, resetPayload));
+      });
+
+      // Eksekusi semua perintah update sekaligus!
+      await Promise.all(resetPromises);
+
+      alert("✅ BERHASIL! Seluruh data iuran warga telah direset menjadi 0. Selamat datang di periode pembukuan baru!");
+      
+      // Ambil ulang data agar dashboard langsung menampilkan angka 0
+      fetchAllData(); 
+
+    } catch (error) {
+      console.error("Gagal melakukan reset:", error);
+      alert("Terjadi kesalahan saat mereset data.");
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   return (
     <PageLayout activeMenu="dashboard">
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-blue-900">Grand Dashboard Overview</h2>
         <p className="text-slate-500 text-sm mt-1">Ringkasan total iuran dari seluruh Rukun Tetangga (RT 01, RT 02, RT 03).</p>
       </div>
+
+      {/* TOMBOL RESET HANYA MUNCUL JIKA USER ADALAH ADMIN */}
+      {userRole === 'admin' && (
+        <button 
+          onClick={handleResetPeriode}
+          disabled={isResetting || loading}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-bold text-white rounded-lg shadow-sm transition ${
+            isResetting ? 'bg-slate-400 cursor-wait' : 'bg-red-600 hover:bg-red-700'
+          }`}
+        >
+          {isResetting ? 'Sedang Mereset Data...' : '⚠️ Reset Periode Baru'}
+        </button>
+      )}
 
       {loading ? (
         <div className="flex justify-center items-center h-40 bg-white rounded-xl border border-slate-200">

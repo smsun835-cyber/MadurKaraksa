@@ -7,6 +7,9 @@ import RT02Billing from './pages/RT02Billing';
 import Login from './pages/login';
 // Jangan lupa import komponen barunya di bagian paling atas
 import LaporanKegiatan from './pages/LaporanKegiatan';
+import GeneratorSurat from './pages/GeneratorSurat'; // Sesuaikan lokasi filenya
+
+// Di dalam <Routes> Anda, tambahkan:
 
 // Tambahkan di dalam <Routes> Anda
 
@@ -20,6 +23,7 @@ function App() {
         <Route path="/rt-02" element={<RT02Billing />} />
         <Route path="/rt-03" element={<RTBilling />} />
         <Route path="/laporan-kegiatan" element={<LaporanKegiatan />} />
+        <Route path="/generator-surat" element={<GeneratorSurat />} />
       </Routes>
     
   );

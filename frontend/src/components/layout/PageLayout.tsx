@@ -91,13 +91,21 @@ export default function PageLayout({ children, activeMenu }: PageLayoutProps) {
             <MenuLink to="/rt-03" icon="💵" label="RT 03 Billing" isActive={activeMenu === 'rt03'} />
 
             {/* HANYA MUNCUL UNTUK ROLE BENDAHARA ATAU ADMIN */}
-            {(userRole === 'bendahara' || userRole === 'admin') && (
+            {(userRole === 'bendahara' || userRole === 'admin'  || userRole === 'sekertaris') && (
+              <>
               <MenuLink 
                 to="/laporan-kegiatan" 
                 icon="📋" 
                 label="Laporan Kegiatan" 
                 isActive={activeMenu === 'kegiatan'} 
               />
+              <MenuLink 
+      to="/generator-surat" 
+      icon="📝" 
+      label="Generator Surat" 
+      isActive={activeMenu === 'generator'} 
+    />
+    </>
             )}
           </nav>
         </div>
