@@ -19,6 +19,7 @@ export const COLLECTION_ID_RT03 = 'rt_3';
 // Tambahkan di deretan variabel ID Anda yang lain
 export const COLLECTION_ID_KEUANGAN = 'keuangan';
 export const COLLECTION_ID_KEGIATAN = 'kegiatan';
+export const COLLECTION_ID_HISTORI = 'histori_transaksi';
 
 // Fungsi helper untuk mengecek role
 export async function getUserRole() {

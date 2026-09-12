@@ -109,7 +109,7 @@ export default function GeneratorSurat() {
         {/* ======================================================== */}
         {/* BAGIAN KIRI: FORM INPUT SURAT & TANDA TANGAN */}
         {/* ======================================================== */}
-        <div className="lg:col-span-5 space-y-4 sembunyikan-saat-print bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-fit sticky top-6">
+        <div className="lg:col-span-5 space-y-4 sembunyikan-saat-print bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-fit lg:sticky lg:top-6">
           <h3 className="font-bold text-slate-800 border-b pb-2 mb-2">Pengaturan Surat</h3>
           
           <div className="grid grid-cols-2 gap-3">
@@ -232,7 +232,7 @@ export default function GeneratorSurat() {
           <div
             id="area-surat"
             className="bg-white mx-auto shadow-lg p-8 md:p-12 text-black font-times border border-slate-200"
-            style={{ width: '100%', maxWidth: '210mm', minHeight: '297mm' }}
+            style={{ minWidth: '210mm', minHeight: '297mm' }}
             >
             <div>
               {/* 1. KOP SURAT */}

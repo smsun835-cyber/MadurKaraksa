@@ -62,6 +62,7 @@ export default function PageLayout({ children, activeMenu }: PageLayoutProps) {
         <div>
           <div className="p-6 flex justify-between items-center">
             <div>
+               <img src="logo-kanan.png" alt="Logo Kanan" className="w-full h-full object-contain" />
               <h1 className="text-xl font-bold text-blue-900 leading-tight">
                 Madur Raksa<br />
               </h1>

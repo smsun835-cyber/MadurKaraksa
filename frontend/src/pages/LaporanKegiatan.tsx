@@ -26,11 +26,21 @@ export default function LaporanKegiatan() {
   // State Layar 2 (Detail Transaksi)
   const [activeKegiatan, setActiveKegiatan] = useState<string | null>(null);
   
+  // Fungsi mendapatkan tanggal hari ini berformat YYYY-MM-DD sesuai zona waktu lokal
+  const getTodayDate = () => {
+    const today = new Date();
+    const localDate = new Date(today.getTime() - (today.getTimezoneOffset() * 60000));
+    return localDate.toISOString().split('T')[0];
+  };
+
   // State Form Transaksi
-  const [tglTransaksi, setTglTransaksi] = useState('');
+  const [tglTransaksi, setTglTransaksi] = useState(getTodayDate());
   const [debitInput, setDebitInput] = useState('');
   const [creditInput, setCreditInput] = useState('');
   const [keterangan, setKeterangan] = useState('');
+  
+  // State Penanda Edit
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
     async function init() {
@@ -102,28 +112,75 @@ export default function LaporanKegiatan() {
     }
   };
 
+  // FUNGSI SIMPAN DAN UPDATE TRANSAKSI
   const handleSimpanTransaksi = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeKegiatan || !tglTransaksi) return alert("Pilih tanggal transaksi!");
+    if (!activeKegiatan) return alert("Folder kegiatan belum dipilih!");
+    
+    // Jika tgl kosong karena dihapus manual, gunakan tanggal hari ini
+    const tanggalSimpan = tglTransaksi || getTodayDate();
 
     const nilaiDebit = Number(debitInput) || 0;
     const nilaiCredit = Number(creditInput) || 0;
     const nilaiSaldoText = String(nilaiDebit - nilaiCredit);
 
     try {
-      await databases.createDocument(DATABASE_ID, COLLECTION_ID_KEUANGAN, ID.unique(), {
-        nama: activeKegiatan,
-        tanggal: new Date(tglTransaksi).toISOString(),
-        debit: nilaiDebit,
-        credit: nilaiCredit,
-        keterangan: keterangan || '-',
-        saldo: nilaiSaldoText
-      });
-      setTglTransaksi(''); setDebitInput(''); setCreditInput(''); setKeterangan('');
+      if (editingId) {
+        // MODE EDIT UPDATE
+        await databases.updateDocument(DATABASE_ID, COLLECTION_ID_KEUANGAN, editingId, {
+          tanggal: new Date(tanggalSimpan).toISOString(),
+          debit: nilaiDebit,
+          credit: nilaiCredit,
+          keterangan: keterangan || '-',
+          saldo: nilaiSaldoText
+        });
+        alert("Data transaksi berhasil diperbarui!");
+        setEditingId(null);
+      } else {
+        // MODE BUAT BARU
+        await databases.createDocument(DATABASE_ID, COLLECTION_ID_KEUANGAN, ID.unique(), {
+          nama: activeKegiatan,
+          tanggal: new Date(tanggalSimpan).toISOString(),
+          debit: nilaiDebit,
+          credit: nilaiCredit,
+          keterangan: keterangan || '-',
+          saldo: nilaiSaldoText
+        });
+      }
+
+      // Bersihkan input angka dan teks
+      setDebitInput(''); 
+      setCreditInput(''); 
+      setKeterangan('');
+      // CATATAN PENTING: tglTransaksi TIDAK di-reset agar tanggalnya tetap "nyangkut/sticky"
+      
       fetchData();
     } catch (error) {
+      console.error(error);
       alert("Gagal menyimpan transaksi.");
     }
+  };
+
+  // FUNGSI TARIK DATA KE FORM UNTUK DIEDIT
+  const handleEdit = (item: TransaksiKeuangan) => {
+    setEditingId(item.$id);
+    setTglTransaksi(item.tanggal.split('T')[0]); // Mengambil format YYYY-MM-DD
+    setKeterangan(item.keterangan);
+    setDebitInput(item.debit > 0 ? String(item.debit) : '');
+    setCreditInput(item.credit > 0 ? String(item.credit) : '');
+    
+    // Scroll ke atas dengan halus
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // FUNGSI BATAL EDIT
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setKeterangan('');
+    setDebitInput('');
+    setCreditInput('');
+    // Opsional: Boleh di-reset ke tanggal hari ini atau dibiarkan
+    setTglTransaksi(getTodayDate());
   };
 
   const handleHapusTransaksi = async (id: string) => {
@@ -233,7 +290,7 @@ export default function LaporanKegiatan() {
       {activeKegiatan && (
         <>
           <div className="mb-4">
-            <button onClick={() => setActiveKegiatan(null)} className="text-sm font-semibold text-slate-500 hover:text-blue-700 flex items-center gap-1 transition">
+            <button onClick={() => {setActiveKegiatan(null); handleCancelEdit();}} className="text-sm font-semibold text-slate-500 hover:text-blue-700 flex items-center gap-1 transition">
               ← Kembali ke Daftar Kegiatan
             </button>
           </div>
@@ -265,27 +322,71 @@ export default function LaporanKegiatan() {
             </div>
           </div>
 
-          <div className="p-5 bg-white rounded-xl border border-slate-200 shadow-sm mb-6">
-            <h3 className="font-bold text-slate-800 mb-3 text-sm uppercase">📝 Tambah Transaksi Keuangan</h3>
+          <div className={`p-5 rounded-xl border shadow-sm mb-6 transition-colors ${editingId ? 'bg-orange-50 border-orange-200' : 'bg-white border-slate-200'}`}>
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-bold text-slate-800 text-sm uppercase">
+                {editingId ? '✏️ Edit Transaksi Keuangan' : '📝 Tambah Transaksi Keuangan'}
+              </h3>
+              {editingId && (
+                <button 
+                  type="button" 
+                  onClick={handleCancelEdit} 
+                  className="text-xs bg-white border border-slate-300 px-3 py-1 rounded text-slate-600 hover:text-red-500 font-medium"
+                >
+                  ✕ Batal Edit
+                </button>
+              )}
+            </div>
+            
             <form onSubmit={handleSimpanTransaksi} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Tanggal</label>
-                <input type="date" value={tglTransaksi} onChange={(e) => setTglTransaksi(e.target.value)} required className="w-full border border-slate-300 rounded-lg p-2 text-sm" />
+                <input 
+                  type="date" 
+                  value={tglTransaksi} 
+                  onChange={(e) => setTglTransaksi(e.target.value)} 
+                  required 
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white" 
+                />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Keterangan</label>
-                <input type="text" value={keterangan} onChange={(e) => setKeterangan(e.target.value)} placeholder="Contoh: Beli Aqua..." required className="w-full border border-slate-300 rounded-lg p-2 text-sm" />
+                <input 
+                  type="text" 
+                  value={keterangan} 
+                  onChange={(e) => setKeterangan(e.target.value)} 
+                  placeholder="Contoh: Beli Aqua..." 
+                  required 
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white" 
+                />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Debit (Masuk Rp)</label>
-                <input type="number" value={debitInput} onChange={(e) => setDebitInput(e.target.value)} placeholder="0" className="w-full border border-slate-300 rounded-lg p-2 text-sm" />
+                <input 
+                  type="number" 
+                  value={debitInput} 
+                  onChange={(e) => setDebitInput(e.target.value)} 
+                  placeholder="0" 
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white" 
+                />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Credit (Keluar Rp)</label>
-                <input type="number" value={creditInput} onChange={(e) => setCreditInput(e.target.value)} placeholder="0" className="w-full border border-slate-300 rounded-lg p-2 text-sm" />
+                <input 
+                  type="number" 
+                  value={creditInput} 
+                  onChange={(e) => setCreditInput(e.target.value)} 
+                  placeholder="0" 
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white" 
+                />
               </div>
-              <button type="submit" className="w-full bg-blue-900 hover:bg-blue-800 text-white font-medium py-2 rounded-lg text-sm">
-                + Simpan Transaksi
+              <button 
+                type="submit" 
+                className={`w-full text-white font-medium py-2 rounded-lg text-sm transition h-[38px] ${
+                  editingId ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-900 hover:bg-blue-800'
+                }`}
+              >
+                {editingId ? '💾 Update Data' : '+ Simpan Transaksi'}
               </button>
             </form>
           </div>
@@ -321,7 +422,20 @@ export default function LaporanKegiatan() {
                           <td className="p-4 text-right font-bold text-emerald-700">{runningSaldo.toLocaleString('id-ID')}</td>
                           {isBendahara && (
                             <td className="p-4 text-center border-l bg-slate-50">
-                              <button onClick={() => handleHapusTransaksi(item.$id)} className="bg-white border border-slate-300 text-red-600 hover:bg-red-50 hover:border-red-200 px-3 py-1 rounded text-xs font-semibold">Hapus</button>
+                              <div className="flex justify-center gap-2">
+                                <button 
+                                  onClick={() => handleEdit(item)} 
+                                  className="px-2 py-1 bg-white hover:bg-blue-50 text-blue-600 hover:text-blue-800 rounded border border-slate-300 text-xs font-semibold transition"
+                                >
+                                  Edit
+                                </button>
+                                <button 
+                                  onClick={() => handleHapusTransaksi(item.$id)} 
+                                  className="px-2 py-1 bg-white hover:bg-red-50 text-red-600 hover:text-red-800 rounded border border-slate-300 text-xs font-semibold transition"
+                                >
+                                  Hapus
+                                </button>
+                              </div>
                             </td>
                           )}
                         </tr>
