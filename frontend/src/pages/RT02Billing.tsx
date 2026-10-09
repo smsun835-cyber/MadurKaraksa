@@ -5,7 +5,6 @@ import { Query, ID } from 'appwrite';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-// DITAMBAHKAN: September dan Oktober
 interface BillingRecord {
   $id: string;
   $updatedAt: string;
@@ -22,7 +21,7 @@ interface BillingRecord {
   Juni: number;
   Juli: number;
   Agustus: number;
-
+ 
 }
 
 interface InfoDetail {
@@ -32,6 +31,19 @@ interface InfoDetail {
   nominal: number;
   tanggalBayar: string;
   isLegacy?: boolean;
+}
+
+interface DetailWargaHarian {
+  nama: string;
+  bulan: string;
+  nominal: number;
+}
+
+interface DailyIncome {
+  tanggal: string;
+  rawDate: string;
+  total: number;
+  transaksi: DetailWargaHarian[];
 }
 
 export default function RT02Billing() {
@@ -47,8 +59,9 @@ export default function RT02Billing() {
   const [isEditing, setIsEditing] = useState<string | null>(null);
 
   const [infoDetail, setInfoDetail] = useState<InfoDetail | null>(null);
+  const [dailyIncomes, setDailyIncomes] = useState<DailyIncome[]>([]);
+  const [selectedDayDetail, setSelectedDayDetail] = useState<DailyIncome | null>(null);
 
-  // DITAMBAHKAN: September dan Oktober
   const months = ['September', 'Oktober','November', 'Desember', 'Januari', 'Febuari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus' ] as const;
 
   useEffect(() => {
@@ -65,10 +78,65 @@ export default function RT02Billing() {
       setLoading(true);
       const response = await databases.listDocuments(DATABASE_ID, COLLECTION_ID_RT02, [Query.limit(100)]);
       setResidents(response.documents as unknown as BillingRecord[]);
+      
+      await fetchDailyIncome();
     } catch (error) {
       console.error("Gagal mengambil data:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchDailyIncome = async () => {
+    try {
+      const histResponse = await databases.listDocuments(DATABASE_ID, COLLECTION_ID_HISTORI, [
+        Query.equal('Rt', 'RT 02'),
+        Query.limit(500)
+      ]);
+
+      const incomeMap: { [key: string]: { total: number; rawDate: string; transaksi: DetailWargaHarian[] } } = {};
+
+      histResponse.documents.forEach((doc: any) => {
+        const rawDate = doc.Tanggal_bayar || doc.$createdAt;
+        if (!rawDate) return;
+        
+        const dateObj = new Date(rawDate);
+        const dateKey = dateObj.toLocaleDateString('id-ID', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric'
+        });
+
+        const nominalUang = Number(doc.Nominal) || 0;
+        const detailWarga: DetailWargaHarian = {
+          nama: doc.Nama || 'Tanpa Nama',
+          bulan: doc.Bulan || '-',
+          nominal: nominalUang
+        };
+
+        if (incomeMap[dateKey]) {
+          incomeMap[dateKey].total += nominalUang;
+          incomeMap[dateKey].transaksi.push(detailWarga);
+        } else {
+          incomeMap[dateKey] = {
+            total: nominalUang,
+            rawDate: rawDate,
+            transaksi: [detailWarga]
+          };
+        }
+      });
+
+      const formattedDaily = Object.keys(incomeMap).map(tanggal => ({
+        tanggal,
+        rawDate: incomeMap[tanggal].rawDate,
+        total: incomeMap[tanggal].total,
+        transaksi: incomeMap[tanggal].transaksi
+      }));
+
+      formattedDaily.sort((a, b) => new Date(b.rawDate).getTime() - new Date(a.rawDate).getTime());
+      setDailyIncomes(formattedDaily);
+    } catch (err) {
+      console.error("Gagal mengambil rekap harian:", err);
     }
   };
 
@@ -82,8 +150,7 @@ export default function RT02Billing() {
     doc.setTextColor(100, 116, 139);
     doc.text(`Dicetak pada: ${new Date().toLocaleDateString('id-ID')}`, 14, 27);
 
-    // DITAMBAHKAN: Kolom Sep & Okt
-    const tableColumn = ["Nama Warga", "Nov", "Des", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt"];
+    const tableColumn = ["Nama Warga", "Sep", "Okt", "Nov", "Des", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu" ];
     const tableRows = residents.map(item => [
       item.Nama,
        (item.September || 0).toLocaleString('id-ID'),
@@ -113,7 +180,6 @@ export default function RT02Billing() {
     doc.save("Laporan_Iuran_RT_02.pdf");
   };
 
-  // --- FUNGSI SIMPAN DENGAN LOGIKA SPLIT PEMBAYARAN (>10.000) ---
   const handleSaveRecord = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!namaWarga.trim()) return alert("Silakan isi atau pilih nama warga!");
@@ -124,7 +190,6 @@ export default function RT02Billing() {
       let targetId = '';
       const numericNominal = Number(nominal);
 
-      // LOGIKA BARU: SPLIT PEMBAYARAN
       const nominalIuran = numericNominal > 10000 ? 10000 : numericNominal;
       const nominalTambahan = numericNominal > 10000 ? numericNominal - 10000 : 0;
 
@@ -136,7 +201,6 @@ export default function RT02Billing() {
         updatePayloadTambahan[m] = nominalTambahan;
       });
 
-      // 1. SIMPAN DATA KE TABEL UTAMA IURAN RT 02
       if (isEditing) {
         await databases.updateDocument(DATABASE_ID, COLLECTION_ID_RT02, isEditing, updatePayloadIuran);
         targetId = isEditing;
@@ -160,14 +224,13 @@ export default function RT02Billing() {
         }
       }
 
-      // 2. DUAL WRITE HISTORI (Mencatat NOMINAL ASLI untuk Kuitansi Digital)
       try {
         const waktuSimpan = new Date().toISOString();
         const historiPromises = selectedMonths.map(bulan => 
           databases.createDocument(DATABASE_ID, COLLECTION_ID_HISTORI, ID.unique(), {
             Id_warga: targetId,
             Nama: namaWarga,
-            Rt: "RT 02", // DISESUAIKAN UNTUK RT 02
+            Rt: "RT 02", 
             Bulan: bulan,
             Nominal: String(numericNominal), 
             Tanggal_bayar: waktuSimpan
@@ -178,11 +241,10 @@ export default function RT02Billing() {
         console.error("Gagal merekam histori transaksi:", historiError);
       }
 
-      // 3. LOGIKA BARU: SIMPAN SISA UANG KE COLLECTION "Data_Tambahan"
       try {
         if (nominalTambahan > 0 || isEditing) {
           const checkTambahan = await databases.listDocuments(DATABASE_ID, COLLECTION_ID_TAMBAHAN, [
-            Query.equal('ID_warga', targetId) // Sesuai dengan perbaikan ID_warga sebelumnya
+            Query.equal('ID_warga', targetId)
           ]);
 
           if (checkTambahan.documents.length > 0) {
@@ -191,7 +253,7 @@ export default function RT02Billing() {
             await databases.createDocument(DATABASE_ID, COLLECTION_ID_TAMBAHAN, ID.unique(), {
               ID_warga: targetId,
               Nama: namaWarga,
-              RT: "RT 02", // DISESUAIKAN UNTUK RT 02
+              RT: "RT 02", 
               ...updatePayloadTambahan
             });
           }
@@ -200,7 +262,6 @@ export default function RT02Billing() {
         console.error("Gagal menyimpan ke tabel Tambahan:", tambahanError);
       }
       
-      // RESET FORM
       setIsEditing(null);
       setSelectedMonths([]);
       setNamaWarga('');
@@ -340,6 +401,39 @@ export default function RT02Billing() {
       </div>
 
       {userRole !== 'warga' && (
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm mb-6">
+          <div className="flex justify-between items-center mb-3 border-b border-slate-100 pb-2">
+            <h3 className="font-bold text-sm text-slate-700 uppercase tracking-wider">📅 Rekap Penghasilan Penagihan Per Hari (Klik untuk Validasi)</h3>
+            <span className="text-xs text-slate-400">Audit & Balancing Kas</span>
+          </div>
+          
+          {dailyIncomes.length === 0 ? (
+            <p className="text-xs text-slate-400 italic py-2">Belum ada data transaksi harian tercatat.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 max-h-44 overflow-y-auto pr-1">
+              {dailyIncomes.map((item, idx) => (
+                <div 
+                  key={idx} 
+                  onClick={() => setSelectedDayDetail(item)}
+                  className="bg-slate-50 hover:bg-blue-50/70 border border-slate-200 hover:border-blue-300 p-3 rounded-lg flex flex-col justify-between cursor-pointer transition shadow-sm group"
+                  title="Klik untuk melihat daftar warga yang membayar di tanggal ini"
+                >
+                  <div>
+                    <span className="text-xs font-semibold text-slate-500 group-hover:text-blue-700">{item.tanggal}</span>
+                    <p className="text-xs text-slate-400 mt-0.5">{item.transaksi.length} Transaksi tercatat</p>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-slate-200/60 flex justify-between items-center">
+                    <span className="text-xs text-slate-500 font-medium">Total:</span>
+                    <span className="text-base font-bold text-blue-700">Rp {item.total.toLocaleString('id-ID')}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {userRole !== 'warga' && (
         <div className={`p-6 rounded-xl border shadow-sm mb-6 ${isEditing ? 'bg-orange-50 border-orange-200' : 'bg-white border-slate-200'}`}>
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-bold text-lg text-slate-800">
@@ -371,11 +465,7 @@ export default function RT02Billing() {
                   <ul className="absolute z-10 w-full bg-white border border-slate-200 shadow-xl max-h-48 overflow-y-auto rounded-lg mt-1">
                     {filteredNama.length > 0 ? (
                       filteredNama.map((nama, index) => (
-                        <li 
-                          key={index} 
-                          onMouseDown={() => { setNamaWarga(nama); setIsDropdownOpen(false); }} 
-                          className="p-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer border-b border-slate-50 transition"
-                        >
+                        <li key={index} onMouseDown={() => { setNamaWarga(nama); setIsDropdownOpen(false); }} className="p-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer border-b border-slate-50 transition">
                           {nama}
                         </li>
                       ))
@@ -383,10 +473,7 @@ export default function RT02Billing() {
                       <li className="p-2.5 text-sm text-slate-500 italic">Nama belum ada di DB</li>
                     )}
                     {namaWarga.trim() !== '' && !daftarNamaUnik.includes(namaWarga) && (
-                      <li 
-                        onMouseDown={() => setIsDropdownOpen(false)} 
-                        className="p-2.5 text-sm bg-blue-50 text-blue-800 font-semibold cursor-pointer sticky bottom-0 border-t border-blue-100"
-                      >
+                      <li onMouseDown={() => setIsDropdownOpen(false)} className="p-2.5 text-sm bg-blue-50 text-blue-800 font-semibold cursor-pointer sticky bottom-0 border-t border-blue-100">
                         + Jadikan "{namaWarga}" warga baru
                       </li>
                     )}
@@ -411,21 +498,9 @@ export default function RT02Billing() {
               <div className="flex justify-between items-center mb-1">
                 <label className="block text-xs font-semibold text-slate-600 uppercase">Pilih Bulan Pembayaran</label>
                 <div className="space-x-2">
-                  <button 
-                    type="button" 
-                    onClick={() => setSelectedMonths([...months])}
-                    className="text-[11px] text-blue-600 hover:underline font-semibold"
-                  >
-                    Pilih Semua
-                  </button>
+                  <button type="button" onClick={() => setSelectedMonths([...months])} className="text-[11px] text-blue-600 hover:underline font-semibold">Pilih Semua</button>
                   <span className="text-slate-300">|</span>
-                  <button 
-                    type="button" 
-                    onClick={() => setSelectedMonths([])}
-                    className="text-[11px] text-red-500 hover:underline font-semibold"
-                  >
-                    Reset Pilihan
-                  </button>
+                  <button type="button" onClick={() => setSelectedMonths([])} className="text-[11px] text-red-500 hover:underline font-semibold">Reset Pilihan</button>
                 </div>
               </div>
 
@@ -433,26 +508,8 @@ export default function RT02Billing() {
                 {months.map((m) => {
                   const isChecked = selectedMonths.includes(m);
                   return (
-                    <label 
-                      key={m} 
-                      className={`flex items-center gap-2.5 p-2 rounded border text-xs cursor-pointer transition ${
-                        isChecked 
-                          ? 'bg-blue-50 border-blue-300 text-blue-900 font-bold shadow-sm' 
-                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      <input 
-                        type="checkbox" 
-                        checked={isChecked}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedMonths([...selectedMonths, m]);
-                          } else {
-                            setSelectedMonths(selectedMonths.filter(item => item !== m));
-                          }
-                        }}
-                        className="rounded border-slate-300 text-blue-900 focus:ring-blue-100 w-4 h-4 cursor-pointer"
-                      />
+                    <label key={m} className={`flex items-center gap-2.5 p-2 rounded border text-xs cursor-pointer transition ${isChecked ? 'bg-blue-50 border-blue-300 text-blue-900 font-bold shadow-sm' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'}`}>
+                      <input type="checkbox" checked={isChecked} onChange={(e) => { e.target.checked ? setSelectedMonths([...selectedMonths, m]) : setSelectedMonths(selectedMonths.filter(item => item !== m)) }} className="rounded border-slate-300 text-blue-900 focus:ring-blue-100 w-4 h-4 cursor-pointer" />
                       {m}
                     </label>
                   );
@@ -470,12 +527,7 @@ export default function RT02Billing() {
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm mb-6 flex flex-col">
         <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-xl">
           <h3 className="font-bold text-lg text-slate-800">Tabel Iuran Warga RT 02</h3>
-          
-          <button 
-            type="button"
-            onClick={handleDownloadPDF}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm py-2 px-4 rounded-lg shadow-md transition flex items-center gap-2 cursor-pointer"
-          >
+          <button type="button" onClick={handleDownloadPDF} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm py-2 px-4 rounded-lg shadow-md transition flex items-center gap-2 cursor-pointer">
             📥 DOWNLOAD Laporan PDF
           </button>
         </div>
@@ -493,30 +545,19 @@ export default function RT02Billing() {
             </thead>
             <tbody className="text-sm">
               {residents.length === 0 && !loading && (
-                <tr>
-                  <td colSpan={14} className="p-6 text-center text-slate-500 italic">Belum ada data warga di RT 02</td>
-                </tr>
+                <tr><td colSpan={14} className="p-6 text-center text-slate-500 italic">Belum ada data warga di RT 02</td></tr>
               )}
               {residents.map((item) => (
                 <tr key={item.$id} className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="p-4 font-medium text-slate-800 sticky left-0 bg-white z-10 shadow-[1px_0_0_0_#e2e8f0]">
-                    {item.Nama}
-                  </td>
-                  
+                  <td className="p-4 font-medium text-slate-800 sticky left-0 bg-white z-10 shadow-[1px_0_0_0_#e2e8f0]">{item.Nama}</td>
                   {months.map((bulan) => {
                     const uangBulan = Number(item[bulan as keyof BillingRecord]) || 0;
                     return (
-                      <td 
-                        key={bulan} 
-                        onClick={() => handleCellClick(item, bulan, uangBulan)}
-                        className={`p-4 text-center border-r border-slate-50 transition ${uangBulan > 0 ? 'cursor-pointer hover:bg-blue-100 hover:shadow-inner text-slate-800' : 'text-slate-400 cursor-default'}`}
-                        title={uangBulan > 0 ? "Klik untuk lihat detail histori pembayaran" : ""}
-                      >
+                      <td key={bulan} onClick={() => handleCellClick(item, bulan, uangBulan)} className={`p-4 text-center border-r border-slate-50 transition ${uangBulan > 0 ? 'cursor-pointer hover:bg-blue-100 hover:shadow-inner text-slate-800' : 'text-slate-400 cursor-default'}`}>
                         {uangBulan > 0 ? uangBulan.toLocaleString('id-ID') : 0}
                       </td>
                     );
                   })}
-
                   {userRole !== 'warga' && (
                     <td className="p-4 text-center bg-slate-50 border-l">
                       <button onClick={() => handleEdit(item)} className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs mr-2 transition">Edit</button>
@@ -532,20 +573,54 @@ export default function RT02Billing() {
         </div>
       </div>
 
+      {selectedDayDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm transition-opacity" onClick={() => setSelectedDayDetail(null)}>
+          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-lg transform transition-all m-4" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="font-bold text-lg text-blue-900">Validasi Kas: {selectedDayDetail.tanggal}</h3>
+                <p className="text-xs text-slate-500">Daftar warga yang melakukan pembayaran pada tanggal ini</p>
+              </div>
+              <button onClick={() => setSelectedDayDetail(null)} className="text-slate-400 hover:text-red-500 font-bold text-xl">✕</button>
+            </div>
+            <div className="max-h-60 overflow-y-auto mb-4 border border-slate-100 rounded-lg">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-slate-50 text-slate-600 sticky top-0">
+                  <tr>
+                    <th className="p-2.5 border-b">Nama Warga</th>
+                    <th className="p-2.5 border-b text-center">Bulan</th>
+                    <th className="p-2.5 border-b text-right">Nominal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedDayDetail.transaksi.map((trx, idx) => (
+                    <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50">
+                      <td className="p-2.5 font-semibold text-slate-800">{trx.nama}</td>
+                      <td className="p-2.5 text-center text-slate-600">{trx.bulan}</td>
+                      <td className="p-2.5 text-right font-bold text-emerald-600">Rp {trx.nominal.toLocaleString('id-ID')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="bg-blue-50 p-3 rounded-lg flex justify-between items-center mb-5">
+              <span className="text-xs font-bold text-blue-900 uppercase">Total Uang Masuk Hari Ini:</span>
+              <span className="text-lg font-extrabold text-blue-700">Rp {selectedDayDetail.total.toLocaleString('id-ID')}</span>
+            </div>
+            <button onClick={() => setSelectedDayDetail(null)} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-lg transition text-sm">
+              Tutup / Selesai Validasi
+            </button>
+          </div>
+        </div>
+      )}
+
       {infoDetail && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm transition-opacity" 
-          onClick={() => setInfoDetail(null)}
-        >
-          <div 
-            className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm transform transition-all m-4" 
-            onClick={e => e.stopPropagation()} 
-          >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm transition-opacity" onClick={() => setInfoDetail(null)}>
+          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm transform transition-all m-4" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-5 border-b border-slate-100 pb-3">
               <h3 className="font-bold text-lg text-blue-900">Kuitansi Digital</h3>
               <button onClick={() => setInfoDetail(null)} className="text-slate-400 hover:text-red-500 font-bold text-xl">✕</button>
             </div>
-            
             {infoDetail.loading ? (
               <div className="py-8 text-center text-slate-500 flex flex-col items-center">
                 <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-3"></div>
@@ -569,23 +644,12 @@ export default function RT02Billing() {
                 </div>
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
                   <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Tercatat Pada Sistem:</p>
-                  <p className="font-medium text-slate-700 flex items-center gap-2">
-                    ✅ {formatWaktu(infoDetail.tanggalBayar)}
-                  </p>
+                  <p className="font-medium text-slate-700 flex items-center gap-2">✅ {formatWaktu(infoDetail.tanggalBayar)}</p>
                 </div>
-                {infoDetail.isLegacy && (
-                  <p className="text-[10px] text-orange-500 italic text-center mt-2 font-medium bg-orange-50 p-2 rounded">
-                    *Waktu di atas adalah batas update terakhir. Data ini diinput sebelum fitur Histori aktif.
-                  </p>
-                )}
               </div>
             )}
-
             <div className="mt-6">
-              <button 
-                onClick={() => setInfoDetail(null)} 
-                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-lg transition"
-              >
+              <button onClick={() => setInfoDetail(null)} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-lg transition">
                 Tutup
               </button>
             </div>

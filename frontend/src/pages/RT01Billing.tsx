@@ -5,7 +5,6 @@ import { Query, ID } from 'appwrite';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-// DITAMBAHKAN: September dan Oktober
 interface BillingRecord {
   $id: string;
   $updatedAt: string;
@@ -34,6 +33,19 @@ interface InfoDetail {
   isLegacy?: boolean;
 }
 
+interface DetailWargaHarian {
+  nama: string;
+  bulan: string;
+  nominal: number;
+}
+
+interface DailyIncome {
+  tanggal: string;
+  rawDate: string;
+  total: number;
+  transaksi: DetailWargaHarian[];
+}
+
 export default function RT01Billing() {
   const [residents, setResidents] = useState<BillingRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -47,9 +59,12 @@ export default function RT01Billing() {
   const [isEditing, setIsEditing] = useState<string | null>(null);
 
   const [infoDetail, setInfoDetail] = useState<InfoDetail | null>(null);
+  const [dailyIncomes, setDailyIncomes] = useState<DailyIncome[]>([]);
 
-  // DITAMBAHKAN: September dan Oktober
-  const months = [ 'September', 'Oktober','November', 'Desember', 'Januari', 'Febuari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus'] as const;
+  // State untuk modal detail harian (Validasi Kas)
+  const [selectedDayDetail, setSelectedDayDetail] = useState<DailyIncome | null>(null);
+
+  const months = ['September', 'Oktober','November', 'Desember', 'Januari', 'Febuari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus' ] as const;
 
   useEffect(() => {
     async function init() {
@@ -65,10 +80,67 @@ export default function RT01Billing() {
       setLoading(true);
       const response = await databases.listDocuments(DATABASE_ID, COLLECTION_ID_RT01, [Query.limit(100)]);
       setResidents(response.documents as unknown as BillingRecord[]);
+      
+      await fetchDailyIncome();
     } catch (error) {
       console.error("Gagal mengambil data:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchDailyIncome = async () => {
+    try {
+      // Filter khusus RT 01
+      const histResponse = await databases.listDocuments(DATABASE_ID, COLLECTION_ID_HISTORI, [
+        Query.equal('Rt', 'RT 01'),
+        Query.limit(500)
+      ]);
+
+      const incomeMap: { [key: string]: { total: number; rawDate: string; transaksi: DetailWargaHarian[] } } = {};
+
+      histResponse.documents.forEach((doc: any) => {
+        const rawDate = doc.Tanggal_bayar || doc.$createdAt;
+        if (!rawDate) return;
+        
+        const dateObj = new Date(rawDate);
+        const dateKey = dateObj.toLocaleDateString('id-ID', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric'
+        });
+
+        const nominalUang = Number(doc.Nominal) || 0;
+        const detailWarga: DetailWargaHarian = {
+          nama: doc.Nama || 'Tanpa Nama',
+          bulan: doc.Bulan || '-',
+          nominal: nominalUang
+        };
+
+        if (incomeMap[dateKey]) {
+          incomeMap[dateKey].total += nominalUang;
+          incomeMap[dateKey].transaksi.push(detailWarga);
+        } else {
+          incomeMap[dateKey] = {
+            total: nominalUang,
+            rawDate: rawDate,
+            transaksi: [detailWarga]
+          };
+        }
+      });
+
+      const formattedDaily = Object.keys(incomeMap).map(tanggal => ({
+        tanggal,
+        rawDate: incomeMap[tanggal].rawDate,
+        total: incomeMap[tanggal].total,
+        transaksi: incomeMap[tanggal].transaksi
+      }));
+
+      formattedDaily.sort((a, b) => new Date(b.rawDate).getTime() - new Date(a.rawDate).getTime());
+
+      setDailyIncomes(formattedDaily);
+    } catch (err) {
+      console.error("Gagal mengambil rekap harian:", err);
     }
   };
 
@@ -82,8 +154,7 @@ export default function RT01Billing() {
     doc.setTextColor(100, 116, 139);
     doc.text(`Dicetak pada: ${new Date().toLocaleDateString('id-ID')}`, 14, 27);
 
-    // DITAMBAHKAN: Kolom Sep & Okt
-    const tableColumn = ["Nama Warga", "Nov", "Des", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt"];
+    const tableColumn = ["Nama Warga", "Sep", "Okt", "Nov", "Des", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu" ];
     const tableRows = residents.map(item => [
       item.Nama,
       (item.September || 0).toLocaleString('id-ID'),
@@ -113,7 +184,6 @@ export default function RT01Billing() {
     doc.save("Laporan_Iuran_RT_01.pdf");
   };
 
-  // --- FUNGSI SIMPAN DENGAN LOGIKA SPLIT PEMBAYARAN (>10.000) ---
   const handleSaveRecord = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!namaWarga.trim()) return alert("Silakan isi atau pilih nama warga!");
@@ -124,8 +194,6 @@ export default function RT01Billing() {
       let targetId = '';
       const numericNominal = Number(nominal);
 
-      // LOGIKA BARU: SPLIT PEMBAYARAN
-      // Maksimal 10.000 masuk ke Iuran RT, sisanya masuk ke Tabel Tambahan
       const nominalIuran = numericNominal > 10000 ? 10000 : numericNominal;
       const nominalTambahan = numericNominal > 10000 ? numericNominal - 10000 : 0;
 
@@ -137,7 +205,6 @@ export default function RT01Billing() {
         updatePayloadTambahan[m] = nominalTambahan;
       });
 
-      // 1. SIMPAN DATA KE TABEL UTAMA IURAN (Maksimal 10.000)
       if (isEditing) {
         await databases.updateDocument(DATABASE_ID, COLLECTION_ID_RT01, isEditing, updatePayloadIuran);
         targetId = isEditing;
@@ -161,7 +228,6 @@ export default function RT01Billing() {
         }
       }
 
-      // 2. DUAL WRITE HISTORI (Mencatat NOMINAL ASLI untuk Kuitansi Digital)
       try {
         const waktuSimpan = new Date().toISOString();
         const historiPromises = selectedMonths.map(bulan => 
@@ -170,7 +236,7 @@ export default function RT01Billing() {
             Nama: namaWarga,
             Rt: "RT 01", 
             Bulan: bulan,
-            Nominal: String(numericNominal), // Histori tetap mencatat nominal penuh (misal 25.000)
+            Nominal: String(numericNominal), 
             Tanggal_bayar: waktuSimpan
           })
         );
@@ -179,19 +245,15 @@ export default function RT01Billing() {
         console.error("Gagal merekam histori transaksi:", historiError);
       }
 
-      // 3. LOGIKA BARU: SIMPAN SISA UANG KE COLLECTION "Data_Tambahan"
       try {
         if (nominalTambahan > 0 || isEditing) {
-          // Cek apakah warga ini sudah punya data di tabel tambahan
           const checkTambahan = await databases.listDocuments(DATABASE_ID, COLLECTION_ID_TAMBAHAN, [
             Query.equal('ID_warga', targetId)
           ]);
 
           if (checkTambahan.documents.length > 0) {
-            // Update baris tambahan yang sudah ada
             await databases.updateDocument(DATABASE_ID, COLLECTION_ID_TAMBAHAN, checkTambahan.documents[0].$id, updatePayloadTambahan);
           } else if (nominalTambahan > 0) {
-            // Buat baris baru di tabel tambahan jika ada sisa uang
             await databases.createDocument(DATABASE_ID, COLLECTION_ID_TAMBAHAN, ID.unique(), {
               ID_warga: targetId,
               Nama: namaWarga,
@@ -204,7 +266,6 @@ export default function RT01Billing() {
         console.error("Gagal menyimpan ke tabel Tambahan:", tambahanError);
       }
       
-      // RESET FORM
       setIsEditing(null);
       setSelectedMonths([]);
       setNamaWarga('');
@@ -236,7 +297,7 @@ export default function RT01Billing() {
           loading: false,
           nama: item.Nama,
           bulan: bulan,
-          nominal: Number(dataHistori.Nominal) || nominalUang, // Mengambil nominal asli dari histori agar kuitansi akurat
+          nominal: Number(dataHistori.Nominal) || nominalUang, 
           tanggalBayar: dataHistori.Tanggal_bayar || dataHistori.$createdAt
         });
       } else {
@@ -320,6 +381,7 @@ export default function RT01Billing() {
         </div>
       </div>
 
+      {/* 3 CARD ATAS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
           <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Collected</p>
@@ -343,6 +405,41 @@ export default function RT01Billing() {
         </div>
       </div>
 
+      {/* --- CARD REKAP HARIAN (HANYA MUNCUL JIKA BUKAN WARGA) --- */}
+      {userRole !== 'warga' && (
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm mb-6">
+          <div className="flex justify-between items-center mb-3 border-b border-slate-100 pb-2">
+            <h3 className="font-bold text-sm text-slate-700 uppercase tracking-wider">📅 Rekap Penghasilan Penagihan Per Hari (Klik untuk Validasi)</h3>
+            <span className="text-xs text-slate-400">Audit & Balancing Kas</span>
+          </div>
+          
+          {dailyIncomes.length === 0 ? (
+            <p className="text-xs text-slate-400 italic py-2">Belum ada data transaksi harian tercatat.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 max-h-44 overflow-y-auto pr-1">
+              {dailyIncomes.map((item, idx) => (
+                <div 
+                  key={idx} 
+                  onClick={() => setSelectedDayDetail(item)}
+                  className="bg-slate-50 hover:bg-blue-50/70 border border-slate-200 hover:border-blue-300 p-3 rounded-lg flex flex-col justify-between cursor-pointer transition shadow-sm group"
+                  title="Klik untuk melihat daftar warga yang membayar di tanggal ini"
+                >
+                  <div>
+                    <span className="text-xs font-semibold text-slate-500 group-hover:text-blue-700">{item.tanggal}</span>
+                    <p className="text-xs text-slate-400 mt-0.5">{item.transaksi.length} Transaksi tercatat</p>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-slate-200/60 flex justify-between items-center">
+                    <span className="text-xs text-slate-500 font-medium">Total:</span>
+                    <span className="text-base font-bold text-blue-700">Rp {item.total.toLocaleString('id-ID')}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* FORM INPUT */}
       {userRole !== 'warga' && (
         <div className={`p-6 rounded-xl border shadow-sm mb-6 ${isEditing ? 'bg-orange-50 border-orange-200' : 'bg-white border-slate-200'}`}>
           <div className="flex justify-between items-center mb-4">
@@ -358,7 +455,6 @@ export default function RT01Billing() {
           
           <form onSubmit={handleSaveRecord} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Nama Warga */}
               <div className="relative">
                 <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Nama Warga</label>
                 <input 
@@ -399,7 +495,6 @@ export default function RT01Billing() {
                 )}
               </div>
 
-              {/* Nominal */}
               <div>
                 <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Nominal Per Bulan (Rp)</label>
                 <input 
@@ -413,26 +508,13 @@ export default function RT01Billing() {
               </div>
             </div>
 
-            {/* CHECKBOX PILIHAN BULAN (BISA BANYAK SEKALIGUS) */}
             <div>
               <div className="flex justify-between items-center mb-1">
                 <label className="block text-xs font-semibold text-slate-600 uppercase">Pilih Bulan Pembayaran</label>
                 <div className="space-x-2">
-                  <button 
-                    type="button" 
-                    onClick={() => setSelectedMonths([...months])}
-                    className="text-[11px] text-blue-600 hover:underline font-semibold"
-                  >
-                    Pilih Semua
-                  </button>
+                  <button type="button" onClick={() => setSelectedMonths([...months])} className="text-[11px] text-blue-600 hover:underline font-semibold">Pilih Semua</button>
                   <span className="text-slate-300">|</span>
-                  <button 
-                    type="button" 
-                    onClick={() => setSelectedMonths([])}
-                    className="text-[11px] text-red-500 hover:underline font-semibold"
-                  >
-                    Reset Pilihan
-                  </button>
+                  <button type="button" onClick={() => setSelectedMonths([])} className="text-[11px] text-red-500 hover:underline font-semibold">Reset Pilihan</button>
                 </div>
               </div>
 
@@ -440,26 +522,8 @@ export default function RT01Billing() {
                 {months.map((m) => {
                   const isChecked = selectedMonths.includes(m);
                   return (
-                    <label 
-                      key={m} 
-                      className={`flex items-center gap-2.5 p-2 rounded border text-xs cursor-pointer transition ${
-                        isChecked 
-                          ? 'bg-blue-50 border-blue-300 text-blue-900 font-bold shadow-sm' 
-                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      <input 
-                        type="checkbox" 
-                        checked={isChecked}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedMonths([...selectedMonths, m]);
-                          } else {
-                            setSelectedMonths(selectedMonths.filter(item => item !== m));
-                          }
-                        }}
-                        className="rounded border-slate-300 text-blue-900 focus:ring-blue-100 w-4 h-4 cursor-pointer"
-                      />
+                    <label key={m} className={`flex items-center gap-2.5 p-2 rounded border text-xs cursor-pointer transition ${isChecked ? 'bg-blue-50 border-blue-300 text-blue-900 font-bold shadow-sm' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'}`}>
+                      <input type="checkbox" checked={isChecked} onChange={(e) => { e.target.checked ? setSelectedMonths([...selectedMonths, m]) : setSelectedMonths(selectedMonths.filter(item => item !== m)) }} className="rounded border-slate-300 text-blue-900 focus:ring-blue-100 w-4 h-4 cursor-pointer" />
                       {m}
                     </label>
                   );
@@ -474,15 +538,11 @@ export default function RT01Billing() {
         </div>
       )}
 
+      {/* TABEL UTAMA */}
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm mb-6 flex flex-col">
         <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-xl">
           <h3 className="font-bold text-lg text-slate-800">Tabel Iuran Warga RT 01</h3>
-          
-          <button 
-            type="button"
-            onClick={handleDownloadPDF}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm py-2 px-4 rounded-lg shadow-md transition flex items-center gap-2 cursor-pointer"
-          >
+          <button type="button" onClick={handleDownloadPDF} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm py-2 px-4 rounded-lg shadow-md transition flex items-center gap-2 cursor-pointer">
             📥 DOWNLOAD Laporan PDF
           </button>
         </div>
@@ -500,9 +560,7 @@ export default function RT01Billing() {
             </thead>
             <tbody className="text-sm">
               {residents.length === 0 && !loading && (
-                <tr>
-                  <td colSpan={14} className="p-6 text-center text-slate-500 italic">Belum ada data warga di RT 01</td>
-                </tr>
+                <tr><td colSpan={14} className="p-6 text-center text-slate-500 italic">Belum ada data warga di RT 01</td></tr>
               )}
               {residents.map((item) => (
                 <tr key={item.$id} className="border-b border-slate-100 hover:bg-slate-50">
@@ -539,16 +597,55 @@ export default function RT01Billing() {
         </div>
       </div>
 
-      {/* MODAL KUITANSI DIGITAL */}
+      {/* --- MODAL DETAIL VALIDASI HARIAN --- */}
+      {selectedDayDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm transition-opacity" onClick={() => setSelectedDayDetail(null)}>
+          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-lg transform transition-all m-4" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="font-bold text-lg text-blue-900">Validasi Kas: {selectedDayDetail.tanggal}</h3>
+                <p className="text-xs text-slate-500">Daftar warga yang melakukan pembayaran pada tanggal ini</p>
+              </div>
+              <button onClick={() => setSelectedDayDetail(null)} className="text-slate-400 hover:text-red-500 font-bold text-xl">✕</button>
+            </div>
+            
+            <div className="max-h-60 overflow-y-auto mb-4 border border-slate-100 rounded-lg">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-slate-50 text-slate-600 sticky top-0">
+                  <tr>
+                    <th className="p-2.5 border-b">Nama Warga</th>
+                    <th className="p-2.5 border-b text-center">Bulan</th>
+                    <th className="p-2.5 border-b text-right">Nominal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedDayDetail.transaksi.map((trx, idx) => (
+                    <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50">
+                      <td className="p-2.5 font-semibold text-slate-800">{trx.nama}</td>
+                      <td className="p-2.5 text-center text-slate-600">{trx.bulan}</td>
+                      <td className="p-2.5 text-right font-bold text-emerald-600">Rp {trx.nominal.toLocaleString('id-ID')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="bg-blue-50 p-3 rounded-lg flex justify-between items-center mb-5">
+              <span className="text-xs font-bold text-blue-900 uppercase">Total Uang Masuk Hari Ini:</span>
+              <span className="text-lg font-extrabold text-blue-700">Rp {selectedDayDetail.total.toLocaleString('id-ID')}</span>
+            </div>
+
+            <button onClick={() => setSelectedDayDetail(null)} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-lg transition text-sm">
+              Tutup / Selesai Validasi
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL KUITANSI */}
       {infoDetail && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm transition-opacity" 
-          onClick={() => setInfoDetail(null)}
-        >
-          <div 
-            className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm transform transition-all m-4" 
-            onClick={e => e.stopPropagation()} 
-          >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm transition-opacity" onClick={() => setInfoDetail(null)}>
+          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm transform transition-all m-4" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-5 border-b border-slate-100 pb-3">
               <h3 className="font-bold text-lg text-blue-900">Kuitansi Digital</h3>
               <button onClick={() => setInfoDetail(null)} className="text-slate-400 hover:text-red-500 font-bold text-xl">✕</button>
@@ -577,30 +674,19 @@ export default function RT01Billing() {
                 </div>
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
                   <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Tercatat Pada Sistem:</p>
-                  <p className="font-medium text-slate-700 flex items-center gap-2">
-                    ✅ {formatWaktu(infoDetail.tanggalBayar)}
-                  </p>
+                  <p className="font-medium text-slate-700 flex items-center gap-2">✅ {formatWaktu(infoDetail.tanggalBayar)}</p>
                 </div>
-                {infoDetail.isLegacy && (
-                  <p className="text-[10px] text-orange-500 italic text-center mt-2 font-medium bg-orange-50 p-2 rounded">
-                    *Waktu di atas adalah batas update terakhir. Data ini diinput sebelum fitur Histori aktif.
-                  </p>
-                )}
               </div>
             )}
 
             <div className="mt-6">
-              <button 
-                onClick={() => setInfoDetail(null)} 
-                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-lg transition"
-              >
+              <button onClick={() => setInfoDetail(null)} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-lg transition">
                 Tutup
               </button>
             </div>
           </div>
         </div>
       )}
-
     </PageLayout>
   );
 }
