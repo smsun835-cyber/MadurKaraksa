@@ -20,6 +20,7 @@ export const COLLECTION_ID_RT03 = 'rt_3';
 export const COLLECTION_ID_KEUANGAN = 'keuangan';
 export const COLLECTION_ID_KEGIATAN = 'kegiatan';
 export const COLLECTION_ID_HISTORI = 'histori_transaksi';
+export const COLLECTION_ID_TAMBAHAN = '6ac87e3a00210e07d92d';
 
 // Fungsi helper untuk mengecek role
 export async function getUserRole() {

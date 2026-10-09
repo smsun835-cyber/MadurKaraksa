@@ -8,6 +8,7 @@ import Login from './pages/login';
 // Jangan lupa import komponen barunya di bagian paling atas
 import LaporanKegiatan from './pages/LaporanKegiatan';
 import GeneratorSurat from './pages/GeneratorSurat'; // Sesuaikan lokasi filenya
+import MenuTambahan from './pages/MenuTambahan'; // Sesuaikan lokasi filenya
 
 // Di dalam <Routes> Anda, tambahkan:
 
@@ -24,6 +25,7 @@ function App() {
         <Route path="/rt-03" element={<RTBilling />} />
         <Route path="/laporan-kegiatan" element={<LaporanKegiatan />} />
         <Route path="/generator-surat" element={<GeneratorSurat />} />
+        <Route path="/menu-tambahan" element={<MenuTambahan />} />
       </Routes>
     
   );

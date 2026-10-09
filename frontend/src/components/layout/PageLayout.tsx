@@ -101,6 +101,12 @@ export default function PageLayout({ children, activeMenu }: PageLayoutProps) {
                 isActive={activeMenu === 'kegiatan'} 
               />
               <MenuLink 
+                to="/menu-tambahan" 
+                icon="📋" 
+                label="Tambahan Donatur" 
+                isActive={activeMenu === 'tambahan'} 
+              />
+              <MenuLink 
       to="/generator-surat" 
       icon="📝" 
       label="Generator Surat" 

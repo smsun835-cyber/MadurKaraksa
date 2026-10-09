@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import PageLayout from '../components/layout/PageLayout';
-import { databases, DATABASE_ID, COLLECTION_ID_RT03, COLLECTION_ID_HISTORI, getUserRole } from '../services/appwriteConfig';
+import { databases, DATABASE_ID, COLLECTION_ID_RT03, COLLECTION_ID_HISTORI, COLLECTION_ID_TAMBAHAN, getUserRole } from '../services/appwriteConfig';
 import { Query, ID } from 'appwrite';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+// DITAMBAHKAN: September dan Oktober
 interface BillingRecord {
   $id: string;
   $updatedAt: string;
   Nama: string;
+  September: number;
+  Oktober: number;
   November: number;
   Desember: number;
   Januari: number;
@@ -19,6 +22,7 @@ interface BillingRecord {
   Juni: number;
   Juli: number;
   Agustus: number;
+  
 }
 
 interface InfoDetail {
@@ -44,7 +48,8 @@ export default function RT03Billing() {
 
   const [infoDetail, setInfoDetail] = useState<InfoDetail | null>(null);
 
-  const months = ['November', 'Desember', 'Januari', 'Febuari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus'] as const;
+  // DITAMBAHKAN: September dan Oktober
+  const months = ['September', 'Oktober','November', 'Desember', 'Januari', 'Febuari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus' ] as const;
 
   useEffect(() => {
     async function init() {
@@ -77,9 +82,12 @@ export default function RT03Billing() {
     doc.setTextColor(100, 116, 139);
     doc.text(`Dicetak pada: ${new Date().toLocaleDateString('id-ID')}`, 14, 27);
 
-    const tableColumn = ["Nama Warga", "Nov", "Des", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu"];
+    // DITAMBAHKAN: Kolom Sep & Okt
+    const tableColumn = ["Nama Warga", "Nov", "Des", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt"];
     const tableRows = residents.map(item => [
       item.Nama,
+      (item.September || 0).toLocaleString('id-ID'),
+      (item.Oktober || 0).toLocaleString('id-ID'),
       (item.November || 0).toLocaleString('id-ID'),
       (item.Desember || 0).toLocaleString('id-ID'),
       (item.Januari || 0).toLocaleString('id-ID'),
@@ -89,7 +97,8 @@ export default function RT03Billing() {
       (item.Mei || 0).toLocaleString('id-ID'),
       (item.Juni || 0).toLocaleString('id-ID'),
       (item.Juli || 0).toLocaleString('id-ID'),
-      (item.Agustus || 0).toLocaleString('id-ID')
+      (item.Agustus || 0).toLocaleString('id-ID'),
+      
     ]);
 
     autoTable(doc, {
@@ -104,6 +113,7 @@ export default function RT03Billing() {
     doc.save("Laporan_Iuran_RT_03.pdf");
   };
 
+  // --- FUNGSI SIMPAN DENGAN LOGIKA SPLIT PEMBAYARAN (>10.000) ---
   const handleSaveRecord = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!namaWarga.trim()) return alert("Silakan isi atau pilih nama warga!");
@@ -114,13 +124,21 @@ export default function RT03Billing() {
       let targetId = '';
       const numericNominal = Number(nominal);
 
-      const updatePayload: Record<string, number> = {};
+      // LOGIKA BARU: SPLIT PEMBAYARAN
+      const nominalIuran = numericNominal > 10000 ? 10000 : numericNominal;
+      const nominalTambahan = numericNominal > 10000 ? numericNominal - 10000 : 0;
+
+      const updatePayloadIuran: Record<string, number> = {};
+      const updatePayloadTambahan: Record<string, number> = {};
+      
       selectedMonths.forEach(m => {
-        updatePayload[m] = numericNominal;
+        updatePayloadIuran[m] = nominalIuran;
+        updatePayloadTambahan[m] = nominalTambahan;
       });
 
+      // 1. SIMPAN DATA KE TABEL UTAMA IURAN RT 03
       if (isEditing) {
-        await databases.updateDocument(DATABASE_ID, COLLECTION_ID_RT03, isEditing, updatePayload);
+        await databases.updateDocument(DATABASE_ID, COLLECTION_ID_RT03, isEditing, updatePayloadIuran);
         targetId = isEditing;
         alert(`Data iuran ${namaWarga} berhasil diperbarui!`);
       } else {
@@ -129,47 +147,65 @@ export default function RT03Billing() {
         );
 
         if (existingResident) {
-          await databases.updateDocument(DATABASE_ID, COLLECTION_ID_RT03, existingResident.$id, updatePayload);
+          await databases.updateDocument(DATABASE_ID, COLLECTION_ID_RT03, existingResident.$id, updatePayloadIuran);
           targetId = existingResident.$id;
           alert(`Berhasil menambahkan pembayaran untuk ${selectedMonths.length} bulan ke baris ${namaWarga}!`);
         } else {
           const newDoc = await databases.createDocument(DATABASE_ID, COLLECTION_ID_RT03, ID.unique(), {
             Nama: namaWarga,
-            ...updatePayload
+            ...updatePayloadIuran
           });
           targetId = newDoc.$id;
           alert(`Warga baru ${namaWarga} berhasil ditambahkan!`);
         }
       }
 
-      // DUAL WRITE HISTORI (Khusus RT 03)
-      // =======================================================
-      // DUAL WRITE HISTORI (Dibungkus try-catch tersendiri)
-      // =======================================================
+      // 2. DUAL WRITE HISTORI (Mencatat NOMINAL ASLI untuk Kuitansi Digital)
       try {
+        const waktuSimpan = new Date().toISOString();
         const historiPromises = selectedMonths.map(bulan => 
           databases.createDocument(DATABASE_ID, COLLECTION_ID_HISTORI, ID.unique(), {
             Id_warga: targetId,
             Nama: namaWarga,
-            Rt: "RT 01", // Pastikan ini RT 02 atau RT 03 di file masing-masing
+            Rt: "RT 03", // DISESUAIKAN UNTUK RT 03
             Bulan: bulan,
             Nominal: String(numericNominal),
+            Tanggal_bayar: waktuSimpan
           })
         );
         await Promise.all(historiPromises);
       } catch (historiError) {
-        // Jika histori gagal (misal karena belum setting permission Appwrite),
-        // sistem hanya akan mencatat di console, TANPA menggagalkan refresh tabel!
         console.error("Gagal merekam histori transaksi:", historiError);
       }
-      // =======================================================
+
+      // 3. LOGIKA BARU: SIMPAN SISA UANG KE COLLECTION "Data_Tambahan"
+      try {
+        if (nominalTambahan > 0 || isEditing) {
+          const checkTambahan = await databases.listDocuments(DATABASE_ID, COLLECTION_ID_TAMBAHAN, [
+            Query.equal('ID_warga', targetId)
+          ]);
+
+          if (checkTambahan.documents.length > 0) {
+            await databases.updateDocument(DATABASE_ID, COLLECTION_ID_TAMBAHAN, checkTambahan.documents[0].$id, updatePayloadTambahan);
+          } else if (nominalTambahan > 0) {
+            await databases.createDocument(DATABASE_ID, COLLECTION_ID_TAMBAHAN, ID.unique(), {
+              ID_warga: targetId,
+              Nama: namaWarga,
+              RT: "RT 03", // DISESUAIKAN UNTUK RT 03
+              ...updatePayloadTambahan
+            });
+          }
+        }
+      } catch (tambahanError) {
+        console.error("Gagal menyimpan ke tabel Tambahan:", tambahanError);
+      }
       
-      // KODE DI BAWAH INI SEKARANG AKAN TETAP BERJALAN DENGAN AMAN!
+      // RESET FORM
       setIsEditing(null);
       setSelectedMonths([]);
       setNamaWarga('');
       setNominal('10000');
-      fetchData(); // <--- Ini yang membuat tabel otomatis ter-refresh!
+      fetchData(); 
       
     } catch (error) {
       console.error("Gagal menyimpan data utama:", error);
@@ -191,12 +227,13 @@ export default function RT03Billing() {
       ]);
 
       if (response.documents.length > 0) {
+        const dataHistori = response.documents[0];
         setInfoDetail({
           loading: false,
           nama: item.Nama,
           bulan: bulan,
-          nominal: nominalUang,
-          tanggalBayar: response.documents[0].$createdAt
+          nominal: Number(dataHistori.Nominal) || nominalUang, 
+          tanggalBayar: dataHistori.Tanggal_bayar || dataHistori.$createdAt
         });
       } else {
         setInfoDetail({
@@ -392,7 +429,7 @@ export default function RT03Billing() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200">
+              <div className="grid grid-cols-2 sm:grid-cols-5 md:grid-cols-6 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200">
                 {months.map((m) => {
                   const isChecked = selectedMonths.includes(m);
                   return (
@@ -457,7 +494,7 @@ export default function RT03Billing() {
             <tbody className="text-sm">
               {residents.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={12} className="p-6 text-center text-slate-500 italic">Belum ada data warga di RT 03</td>
+                  <td colSpan={14} className="p-6 text-center text-slate-500 italic">Belum ada data warga di RT 03</td>
                 </tr>
               )}
               {residents.map((item) => (

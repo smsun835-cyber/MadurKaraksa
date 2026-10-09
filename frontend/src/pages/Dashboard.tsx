@@ -3,9 +3,15 @@ import PageLayout from '../components/layout/PageLayout';
 import { databases, DATABASE_ID, COLLECTION_ID_RT01, COLLECTION_ID_RT02, COLLECTION_ID_RT03, getUserRole } from '../services/appwriteConfig';
 import { Query } from 'appwrite';
 
+// 1. TAMBAHKAN FUNGSI PENUNDA (THROTTLE) DI SINI
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// 2. TAMBAHKAN SEPTEMBER & OKTOBER
 interface BillingRecord {
   $id: string;
   Nama: string;
+  September: number;
+  Oktober: number;
   November: number;
   Desember: number;
   Januari: number;
@@ -24,27 +30,28 @@ export default function Dashboard() {
   const [dataRT03, setDataRT03] = useState<BillingRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isResetting, setIsResetting] = useState(false);
-  const [userRole, setUserRole] = useState('warga'); // Jangan lupa import getUserRole dari appwr
+  const [userRole, setUserRole] = useState('warga'); 
 
-  const months = ['November', 'Desember', 'Januari', 'Febuari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus'] as const;
+  // TAMBAHKAN SEPTEMBER & OKTOBER
+  const months = ['September', 'Oktober', 'November', 'Desember', 'Januari', 'Febuari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus'] as const;
   const targetPerCell = 10000; // Asumsi iuran Rp 10.000 per bulan per warga
 
   useEffect(() => {
-  async function init() {
-    const role = await getUserRole();
-    setUserRole(role);
-    fetchAllData();
-  }
-  init();
-}, []);
+    async function init() {
+      const role = await getUserRole();
+      setUserRole(role);
+      fetchAllData();
+    }
+    init();
+  }, []);
 
   const fetchAllData = async () => {
     try {
       setLoading(true);
       const [resRT01, resRT02, resRT03] = await Promise.all([
-        databases.listDocuments(DATABASE_ID, COLLECTION_ID_RT01, [Query.limit(100)]),
-        databases.listDocuments(DATABASE_ID, COLLECTION_ID_RT02, [Query.limit(100)]),
-        databases.listDocuments(DATABASE_ID, COLLECTION_ID_RT03, [Query.limit(100)])
+        databases.listDocuments(DATABASE_ID, COLLECTION_ID_RT01, [Query.limit(500)]),
+        databases.listDocuments(DATABASE_ID, COLLECTION_ID_RT02, [Query.limit(500)]),
+        databases.listDocuments(DATABASE_ID, COLLECTION_ID_RT03, [Query.limit(500)])
       ]);
 
       setDataRT01(resRT01.documents as unknown as BillingRecord[]);
@@ -88,14 +95,12 @@ export default function Dashboard() {
   const rateRT02 = targetRT02 > 0 ? ((totalRT02 / targetRT02) * 100).toFixed(1) : '0';
   const rateRT03 = targetRT03 > 0 ? ((totalRT03 / targetRT03) * 100).toFixed(1) : '0';
 
-  // --- FUNGSI RESET DATA IURAN (KHUSUS ADMIN) ---
+  // --- FUNGSI RESET DATA IURAN DENGAN SISTEM ANTRE (ANTI-ERROR) ---
   const handleResetPeriode = async () => {
-    // 1. Peringatan Pertama
     if (!window.confirm("⚠️ PERINGATAN BERBAHAYA!\n\nAnda yakin ingin mengosongkan SELURUH data iuran di RT 01, 02, dan 03? Nama warga akan dipertahankan, tapi semua nominal uang akan menjadi Rp 0.")) {
       return;
     }
 
-    // 2. Konfirmasi Ganda (Ketik RESET) untuk mencegah kepencet
     const konfirmasi = window.prompt("Ketik kata 'RESET' (huruf besar semua) untuk melanjutkan:");
     if (konfirmasi !== 'RESET') {
       alert("Proses reset dibatalkan karena kata kunci salah atau dibatalkan.");
@@ -104,31 +109,29 @@ export default function Dashboard() {
 
     setIsResetting(true);
     try {
-      // Data yang akan di-update (semua bulan dikembalikan ke 0)
+      // Data yang akan di-update (semua bulan dikembalikan ke 0, termasuk Sep dan Okt)
       const resetPayload = {
-        November: 0, Desember: 0, Januari: 0, Febuari: 0, Maret: 0, 
-        April: 0, Mei: 0, Juni: 0, Juli: 0, Agustus: 0
+        September: 0, Oktober: 0, November: 0, Desember: 0, 
+        Januari: 0, Febuari: 0, Maret: 0, April: 0, 
+        Mei: 0, Juni: 0, Juli: 0, Agustus: 0
       };
 
-      const resetPromises: Promise<any>[] = [];
+      // Gabungkan semua ID Warga dan ID Collection asalnya menjadi satu antrean panjang
+      const antreanWarga = [
+        ...dataRT01.map(warga => ({ idWarga: warga.$id, collectionId: COLLECTION_ID_RT01, nama: warga.Nama })),
+        ...dataRT02.map(warga => ({ idWarga: warga.$id, collectionId: COLLECTION_ID_RT02, nama: warga.Nama })),
+        ...dataRT03.map(warga => ({ idWarga: warga.$id, collectionId: COLLECTION_ID_RT03, nama: warga.Nama }))
+      ];
 
-      // Kumpulkan semua perintah update dari RT 01
-      dataRT01.forEach((warga) => {
-        resetPromises.push(databases.updateDocument(DATABASE_ID, COLLECTION_ID_RT01, warga.$id, resetPayload));
-      });
-
-      // Kumpulkan semua perintah update dari RT 02
-      dataRT02.forEach((warga) => {
-        resetPromises.push(databases.updateDocument(DATABASE_ID, COLLECTION_ID_RT02, warga.$id, resetPayload));
-      });
-
-      // Kumpulkan semua perintah update dari RT 03
-      dataRT03.forEach((warga) => {
-        resetPromises.push(databases.updateDocument(DATABASE_ID, COLLECTION_ID_RT03, warga.$id, resetPayload));
-      });
-
-      // Eksekusi semua perintah update sekaligus!
-      await Promise.all(resetPromises);
+      // EKSEKUSI SATU PER SATU DENGAN JEDA WAKTU (DELAY 150ms)
+      for (const warga of antreanWarga) {
+        try {
+          await databases.updateDocument(DATABASE_ID, warga.collectionId, warga.idWarga, resetPayload);
+          await delay(150); // Mencegah Appwrite Error: Rate limit exceeded
+        } catch (error) {
+          console.error(`Gagal mereset data warga ${warga.nama}:`, error);
+        }
+      }
 
       alert("✅ BERHASIL! Seluruh data iuran warga telah direset menjadi 0. Selamat datang di periode pembukuan baru!");
       
@@ -136,8 +139,8 @@ export default function Dashboard() {
       fetchAllData(); 
 
     } catch (error) {
-      console.error("Gagal melakukan reset:", error);
-      alert("Terjadi kesalahan saat mereset data.");
+      console.error("Gagal melakukan reset keseluruhan:", error);
+      alert("Terjadi kesalahan sistem saat memulai proses reset.");
     } finally {
       setIsResetting(false);
     }
@@ -155,11 +158,11 @@ export default function Dashboard() {
         <button 
           onClick={handleResetPeriode}
           disabled={isResetting || loading}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-bold text-white rounded-lg shadow-sm transition ${
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-bold text-white rounded-lg shadow-sm transition mb-6 ${
             isResetting ? 'bg-slate-400 cursor-wait' : 'bg-red-600 hover:bg-red-700'
           }`}
         >
-          {isResetting ? 'Sedang Mereset Data...' : '⚠️ Reset Periode Baru'}
+          {isResetting ? 'Sedang Mereset Data (Mohon Tunggu)...' : '⚠️ Reset Periode Baru'}
         </button>
       )}
 
