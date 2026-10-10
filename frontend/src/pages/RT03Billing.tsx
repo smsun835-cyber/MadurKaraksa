@@ -9,7 +9,7 @@ interface BillingRecord {
   $id: string;
   $updatedAt: string;
   Nama: string;
-  September: number;
+   September: number;
   Oktober: number;
   November: number;
   Desember: number;
@@ -21,7 +21,6 @@ interface BillingRecord {
   Juni: number;
   Juli: number;
   Agustus: number;
-  
 }
 
 interface InfoDetail {
@@ -62,7 +61,7 @@ export default function RT03Billing() {
   const [dailyIncomes, setDailyIncomes] = useState<DailyIncome[]>([]);
   const [selectedDayDetail, setSelectedDayDetail] = useState<DailyIncome | null>(null);
 
-  const months = ['September', 'Oktober','November', 'Desember', 'Januari', 'Febuari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus' ] as const;
+  const months = [ 'September', 'Oktober','November', 'Desember', 'Januari', 'Febuari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus'] as const;
 
   useEffect(() => {
     async function init() {
@@ -77,9 +76,10 @@ export default function RT03Billing() {
     try {
       setLoading(true);
       const response = await databases.listDocuments(DATABASE_ID, COLLECTION_ID_RT03, [Query.limit(100)]);
-      setResidents(response.documents as unknown as BillingRecord[]);
+      const fetchedResidents = response.documents as unknown as BillingRecord[];
+      setResidents(fetchedResidents);
       
-      await fetchDailyIncome();
+      await fetchDailyIncome(fetchedResidents);
     } catch (error) {
       console.error("Gagal mengambil data:", error);
     } finally {
@@ -87,7 +87,7 @@ export default function RT03Billing() {
     }
   };
 
-  const fetchDailyIncome = async () => {
+  const fetchDailyIncome = async (currentResidents: BillingRecord[]) => {
     try {
       const histResponse = await databases.listDocuments(DATABASE_ID, COLLECTION_ID_HISTORI, [
         Query.equal('Rt', 'RT 03'),
@@ -100,6 +100,16 @@ export default function RT03Billing() {
         const rawDate = doc.Tanggal_bayar || doc.$createdAt;
         if (!rawDate) return;
         
+        // --- LOGIKA BARU ---
+        const resident = currentResidents.find(r => r.$id === doc.Id_warga || r.Nama === doc.Nama);
+        if (!resident) return; 
+        
+        const bulan = doc.Bulan;
+        const nilaiDiTabelUtama = Number(resident[bulan as keyof BillingRecord]) || 0;
+        
+        if (nilaiDiTabelUtama === 0) return;
+        // -------------------
+
         const dateObj = new Date(rawDate);
         const dateKey = dateObj.toLocaleDateString('id-ID', {
           day: 'numeric',
@@ -150,10 +160,10 @@ export default function RT03Billing() {
     doc.setTextColor(100, 116, 139);
     doc.text(`Dicetak pada: ${new Date().toLocaleDateString('id-ID')}`, 14, 27);
 
-    const tableColumn = ["Nama Warga", "Sep", "Okt", "Nov", "Des", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu" ];
+    const tableColumn = ["Nama Warga", "Sep", "Okt","Nov", "Des", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu"];
     const tableRows = residents.map(item => [
       item.Nama,
-      (item.September || 0).toLocaleString('id-ID'),
+       (item.September || 0).toLocaleString('id-ID'),
       (item.Oktober || 0).toLocaleString('id-ID'),
       (item.November || 0).toLocaleString('id-ID'),
       (item.Desember || 0).toLocaleString('id-ID'),
@@ -165,7 +175,7 @@ export default function RT03Billing() {
       (item.Juni || 0).toLocaleString('id-ID'),
       (item.Juli || 0).toLocaleString('id-ID'),
       (item.Agustus || 0).toLocaleString('id-ID'),
-      
+     
     ]);
 
     autoTable(doc, {
